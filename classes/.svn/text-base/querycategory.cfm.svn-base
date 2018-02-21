@@ -1,0 +1,44 @@
+<cfquery datasource="#request.reg_dsn#" name="QueryClasses">
+	SELECT   Classes.ClassID, Classes.agecategory, Classes.categorya, Classes.Description, Classes.TermID, Classes.FacID, Classes.ClassComments, Classes.UniqueID,
+			Classes.Status, Classes.MinAgeMonths, Classes.MaxAgeMonths, Classes.MinDOB, Classes.MaxDOB, Classes.InDistRegFee, Classes.InDistSenFee, Classes.InstructorComments,
+			Classes.OutDistRegFee, Classes.OutDistSenFee, Classes.MiscFee, Classes.MinQty, Classes.MaxQty, Classes.defer, 
+			Classes.idDeposit, oddeposit, Classes.StartDT, Classes.EndDT, Classes.InstructorList, Classes.LevelTypeCode, classes.classtext,
+			Classes.SunCount, Classes.MonCount, Classes.TueCount, Classes.WedCount, Classes.ThuCount, Classes.FriCount, Classes.SatCount,
+			Terms.TermName, Terms.TermStatus, Terms.AllowODDT, classes.status, <!--- ClassStatusCodes.StatusDesc,  --->classes.IsDivided,
+		  classes.available, classes.CancelReason, classes.cutoff, classes.levels, classes.businesscenterid
+	FROM  Classes Classes, terms terms
+		  <!--- INNER JOIN Terms Terms ON Classes.FacID=Terms.FacID AND Classes.TermID=Terms.TermID --->
+	WHERE classes.suppressonweb = false
+	and terms.termID >= '0406'
+	and now() >= date(terms.startdt) - 40
+	and classes.enddt >= now()
+	and Classes.agecategory like '%#aID#%'
+	and Classes.categorya = '#form.cat#'
+	<cfif isdefined('form.subcat')>
+		<cfif form.subcat is '00'>
+			and Classes.categoryb is null
+		<cfelse>
+			and Classes.categoryb = '#form.subcat#'
+		</cfif>
+	</cfif>
+	<cfif isdefined('form.levelchoice')>
+		<cfif isdefined('form.clevel')>
+			<cfset counter = 1>
+			and 
+			(<cfloop list="#form.clevel#" index="levelname">
+			classes.levels like ('#levelname#')
+			<cfif counter lt listlen(form.clevel)>OR</cfif>
+				<cfset counter = counter + 1>
+			</cfloop>
+			<cfif isdefined('form.slevel')>
+			or classes.levels is null
+			</cfif>
+			)
+		</cfif>
+		<cfif isdefined('form.slevel') and not isdefined('form.clevel')>
+		and classes.levels is null
+		</cfif>
+	</cfif>
+	and classes.facid=terms.facid and classes.termid=terms.termid
+	ORDER BY description
+</cfquery>

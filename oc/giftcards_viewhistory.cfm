@@ -1,0 +1,183 @@
+<br /><table border="0" cellpadding="2" cellspacing="0" width="100%">
+<CFPARAM name="showhistory" default="true">
+<cfset cleanccd = replace(url.historycardnumber," ","","all")>
+<cf_cryp type="en" string="#replace(url.historycardnumber," ","","all")#" key="#skey#">
+
+<cfif IsDefined("cryp.value")>
+	<cfset enccd = cryp.value>
+<cfelse>
+	<cfset enccd = "">
+</cfif>
+
+<cfquery datasource="#application.dopsds#" name="GetHistory">
+	SELECT   othercreditdatahistory.pk,
+	         othercredittypes.othercreditdesc, 
+	         othercreditdata.othercreditdata, 
+	         othercreditdatahistory.debit, othercreditdatahistory.credit, 
+	         othercreditdatahistory.dt, othercreditdatahistory.module, 
+	         othercreditactivities.description, facilities.name,
+	         othercreditdatahistory.invoicefacid,othercreditdatahistory.invoicenumber,
+	         othercreditdata.cardid, thusers.userlogin, thusers.userlast, thusers.userfirst,
+	         othercreditdatahistory.action, othercreditdatahistory.comments, invoice.primarypatronid 
+	FROM     othercreditdatahistory 
+	         INNER JOIN othercreditdata on othercreditdatahistory.cardid=othercreditdata.cardid
+	         INNER JOIN othercredittypes othercredittypes ON othercreditdata.othercredittype=othercredittypes.othercredittype
+	         INNER JOIN othercreditactivities othercreditactivities ON othercreditdatahistory.action=othercreditactivities.activitycode
+	         INNER JOIN facilities facilities ON othercreditdatahistory.invoicefacid=facilities.facid 
+	         INNER JOIN thusers thusers ON othercreditdatahistory.userid=thusers.userid 
+	         LEFT OUTER JOIN invoice invoice ON othercreditdatahistory.invoicefacid=invoice.invoicefacid AND othercreditdatahistory.invoicenumber=invoice.invoicenumber 
+	WHERE    (
+	         othercreditdata.othercreditdata = '#enccd#'
+	         <cfif cleanccd is not "" and IsNumeric(cleanccd) and val(cleanccd) lt 2000000000000000>OR othercreditdata.cardid = #cleanccd#</cfif>
+	         )
+	AND      othercreditdatahistory.valid = true 
+	AND      othercreditactivities.description NOT IN ('Fulfilled','Activated')
+	ORDER BY othercredittypes.othercreditdesc, othercreditdata.othercreditdata, othercreditdatahistory.dt, othercreditdatahistory.pk
+</cfquery>
+
+<cfif GetHistory.recordcount gt 0>
+	<input name="thiscardid" type="Hidden" value="#GetHistory.cardid[1]#">
+
+	<cfquery datasource="#application.dopsds#" name="GetOtherCreditBalance">
+		SELECT   *
+		FROM     othercredithistorysums othercredithistorysums
+		WHERE    othercredithistorysums.cardid = #GetHistory.cardid[1]#
+	</cfquery>
+
+	<cfquery datasource="#application.dopsds#" name="GetCardData">
+		SELECT   cardid, comments, valid, activated, primarypatronid, holdforreview, othercreditdata, othercreditdesc
+		FROM     othercreditdata
+				 INNER JOIN othercredittypes othercredittypes ON othercreditdata.othercredittype=othercredittypes.othercredittype 
+		WHERE    cardid = #GetHistory.cardid[1]#
+	</cfquery>
+
+
+<br><span class="pghdr">View History</span><br>
+
+	
+
+	<cfif GetCardData.primarypatronid is not "">
+
+		<cfquery datasource="#application.dopsds#" name="GetPrimaryData">
+			SELECT   patrons.patronlookup, patrons.lastname, patrons.firstname, patrons.patronid ,
+					 patrons.middlename, patronaddresses.address1, 
+					 patronaddresses.address2, patronaddresses.city, 
+					 patronaddresses.state, patronaddresses.zip 
+			FROM     patrons patrons
+					 INNER JOIN patronrelations patronrelations ON patrons.patronid=patronrelations.primarypatronid
+					 INNER JOIN patronaddresses patronaddresses ON patronrelations.addressid=patronaddresses.addressid 
+			WHERE    patrons.patronid = #GetCardData.primarypatronid# 
+			AND      patronrelations.relationtype = 1
+		</cfquery>
+		
+		<cfif GetPrimaryData.recordcount is 1>
+			<!---
+			<TR>
+				<TD valign="top"><strong>Primary Data:</strong></TD>
+				<TD colspan="10">
+					<strong>#GetPrimaryData.firstname# #GetPrimaryData.lastname#</strong> #GetPrimaryData.patronlookup# (#GetPrimaryData.patronid#)<br>
+					<!--- <input name="thisprimarypatronid" type="Hidden" value="#thisprimarypatronid#"> --->
+					#GetPrimaryData.address1#<cfif GetPrimaryData.address2 is not "">, #GetPrimaryData.address2#</cfif><br>
+					#GetPrimaryData.city#, #GetPrimaryData.state# #GetPrimaryData.zip#&nbsp;&nbsp;&nbsp;
+					<A HREF="javascript:;" onClick="window.open('/Thirst/Reg/ViewPatronInvHistory.cfm?PrimaryPatronID=#GetPrimaryData.patronid#&huserid=#huserid#','','titlebar=1,toolbar=1,status=1,scrollbars=1,resizable=1,screenX=5,screenY=50,width=650,height='+screen.availHeight*0.8)"><strong>History</strong></A>
+					<cfif not IsDefined("showhistory") and IsDefined("GetCardData.cardid")><BR><BR>Card ID: <strong>#GetCardData.cardid#</strong></cfif>
+				</TD>
+			</TR>
+			--->
+		</cfif>
+
+	</cfif>
+
+	<cfif IsDefined("showhistory")>
+	<CFOUTPUT>
+		<TR valign="top">
+			<TD colspan="10" nowrap>
+				<cfif IsDefined("GetCardData.cardid")>Card Number: <strong>#mid(cleanccd,1,4)# #mid(cleanccd,5,4)# #mid(cleanccd,9,4)# #mid(cleanccd,13,4)#</strong></cfif>
+				<cfif not IsDefined("showonlybalance")>All entries shown are in reverse chronological order.</cfif>
+			</TD>
+		</TR>
+		<TR   valign="bottom" bgcolor="cccccc">
+			<TD ><strong>Invoice</strong></TD>
+			
+			<TD><strong>Date/Time</strong></TD>
+			<TD><strong>Location</strong></TD>
+			<TD><strong>Action</strong></TD>
+			
+			<TD align="right"><strong>Net</strong></TD>
+			<TD align="right"><strong>Run Bal</strong></TD>
+			
+		</TR>
+	
+		<cfset runningbal = 0>
+		<cfset t = ArrayNew(1)>
+		<cfset QueryAddColumn(GetHistory,"runningtotal",t)>
+
+		<cfloop query="GetHistory">
+			<cfset runningbal = runningbal + credit - debit>
+			<cfset QuerySetCell(GetHistory,"runningtotal",runningbal,currentrow)>
+		</cfloop>
+
+		<cfquery dbtype="query" name="GetHistory2">
+			select   *
+			from     GetHistory
+			order by dt desc, pk desc
+		</cfquery>
+
+		<cfloop query="GetHistory2">
+
+			<!--- attempt to get more details for dropins --->
+			<CFQUERY name="dropindetails" datasource="#application.dopsds#">
+				<!--- select   description as thedetails from dropinview
+				where    invoicenumber  = <CFIF GetHistory2.invoicenumber IS not "">#GetHistory2.invoicenumber#<CFELSE>0</CFIF>
+				and      facid = '#getHistory2.invoicefacid#' --->
+
+
+				SELECT   dropinselections.description as thedetails
+				FROM     dops.dropinhistory dropinhistory,
+				         dops.dropinselections dropinselections
+				WHERE    dropinhistory.facid::text = dropinselections.facid::text
+				AND      dropinhistory.clickid = dropinselections.clickid
+				and      dropinhistory.facid = '#getHistory2.invoicefacid#'
+				and      dropinhistory.invoicenumber = <CFIF GetHistory2.invoicenumber IS not "">#GetHistory2.invoicenumber#<CFELSE>0</CFIF>
+			</CFQUERY>
+
+			<cfif action is "I" or action is "H" or action is "O">
+				<cfset ViewMode = ''>
+			<cfelse>
+				<cfset viewMode = ''>
+			</cfif>
+
+			<TR valign="top" #ViewMode#>
+				<TD>
+
+					<cfif InvoiceFacID is not "" and InvoiceNumber is not "">
+						<cfset str1 = InvoiceFacID & "-" & InvoiceNumber>
+						<A href="javascript:void(window.open('/portal/classes/class_summary_receipt.cfm?invoicelist=#str1#','','width=750,height=550,statusbar=1,scrollbars=1,resizable=1,toolbar=1'))">#str1#</A>
+					</cfif>
+
+				</TD>
+				
+				<TD nowrap>#dateformat(dt,"mm/dd/yyyy")# #timeformat(dt,"hh:mmtt")#</TD>
+				<TD>#name#</TD>
+				<TD>#description#<CFIF dropindetails.recordcount GT 0><CFLOOP query="dropindetails"><CFIF thedetails NEQ "">: #thedetails#<br /></CFIF></CFLOOP></CFIF></TD>
+				<TD align="right">#numberformat(Credit - Debit,"9,999.99")#</TD>
+				<TD align="right"><strong>#numberformat(runningtotal,"9,999.99")#</strong></TD>
+			</TR>
+
+			<cfif comments is not "">
+				<TR valign="top" #ViewMode#>
+					<TD colspan="10">#replace(comments,chr(10),"<BR>","all")#</TD>
+				</TR>
+			</cfif>
+
+		</cfloop>
+		</CFOUTPUT>
+	</cfif>
+
+<cfelse>
+	<TR>
+		<TD colspan="10"><strong>No history found for specified card or card number is invalid.</strong><BR></TD>
+	</TR>
+</cfif>
+
+</table>

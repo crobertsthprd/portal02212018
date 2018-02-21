@@ -1,0 +1,61 @@
+<cfif IsDefined("cookie.NodeVars")>
+	<cfinclude template="/server.cfm">
+	<cfset aVar = ListToArray(#cookie.NodeVars#)>
+	<!--- check for proper cookie var count and delete if obsolete--->
+	<cfif ArrayLen(aVar) is not 3>
+		<cflocation URL="/Common/Config.cfm">
+	<cfelse>
+		<cfset LocalFac = aVar[1]>
+		<cfset LocalNode = aVar[2]>
+		<cfset common = "#commonds#">
+		<cfset ds = "#dopsds#">
+	</cfif>
+
+	<!--- check for vars--->
+	<cfif not IsDefined("LocalFac") or not IsDefined("LocalNode")>
+		<cflocation URL="/Common/Config.cfm">
+	</cfif>
+
+	<cfquery datasource="#commonds#" name="CheckForAllowAccess">
+		select allowaccess, resetbrowser
+		from nodes
+		where upper(node) = '#uCase(LocalNode)#'
+	</cfquery>
+
+	<cfif CheckForAllowAccess.resetbrowser is 1>
+
+		<cfquery datasource="#commonds#" name="ResetReset">
+			update nodes
+			set resetbrowser = false
+			where node = '#uCase(LocalNode)#'
+		</cfquery>
+
+		<CFCOOKIE NAME="NodeVars" expires="NOW">
+		<BR><BR>This terminal has been reset. Node = <cfoutput>#LocalNode#</cfoutput>. Contact IS for new configuration data.
+		<cfabort>
+	</cfif>
+
+	<cfif CheckForAllowAccess.AllowAccess is not 1>
+		<BR><BR>This terminal is currently not allowed access. Node = <cfoutput>#LocalNode#</cfoutput>. Contact IS for assistance.
+		<cfabort>
+	</cfif>
+
+	<cfquery datasource="#dopsds#" name="CheckForMessage">
+		select *
+		from systemmessage
+	</cfquery>
+
+	<cfif CheckForMessage.recordcount is not 0 and CheckForMessage.critical is 1>
+
+		<cfif CheckForMessage.stopaccess is 1>
+			<cfoutput><BR><BR><strong>System has been temporarily disabled. Try again later.<BR><BR>#CheckForMessage.message#</strong></cfoutput>
+			<cfabort>
+		<cfelse>
+			<cfoutput><script>alert("#CheckForMessage.message#")</script></cfoutput>
+		</cfif>
+
+	</cfif>
+
+<cfelse>
+	<cflocation URL="/Common/Config.cfm">
+</cfif>

@@ -1,0 +1,166 @@
+<cfif cookie.loggedin is not 'yes'>
+	<cflocation url="../index.cfm?msg=3">
+	<cfabort>
+</cfif>
+<cfset webpath = "/classes/categories.cfm">
+<cfoutput>
+	<!--- get content --->
+<cfparam name="url.v" default="L"><!--- default to live version view --->
+<cfparam default="#cgi.SCRIPT_NAME#" name="webpath">
+<cfif cgi.script_name does not contain 'siteadmin'> <!--- don't query for content on admin pages --->
+	<cfquery name="qCheckContent" datasource="#request.dsn#">
+		select ch.ch_expire_date, ch.ch_file_live, ch.ch_file_draft, ch.ch_approved_by, ch.ch_instructions, cd.cd_id, cd.ca_id
+		from th_content_history ch, th_content_data cd
+		where cd.cd_file_path like <cfif not isdefined('url.p')>'#webpath#%'<cfelse>'#url.path#%'</cfif>
+		and cd.cd_status = True
+		and cd.cd_site = 1
+		and cd.cd_edit = True
+		and cd.cd_id = ch.cd_id
+		and ch.ch_status = '#url.v#'
+	</cfquery>
+</cfif>
+<cfparam name="printing" default="no">
+<cfif isdefined('url.p')><!--- user clicked print icon --->
+	<cfif printing is 'no'><!--- only print web address 1 time --->
+	  <tr>
+	  <td colspan=28 align="left" class="bodytext">&nbsp;&nbsp;<strong>http://#cgi.server_name##url.path#</strong><br></td>
+	  </tr>
+	  <cfset printing = "yes">
+	 </cfif>
+</cfif>
+<html>
+<head>
+<title>Tualatin Hills Park and Recreation District</title>
+<meta http-equiv="Content-Type" content="text/html;">
+</head>
+<body bgcolor="ffffff" topmargin="0" leftmargin="0" marginheight="0" marginwidth="0">
+<table border="0" cellpadding="0" cellspacing="0" width="750">
+
+  <tr>
+   <td colspan="36" valign=top>
+      	<table border=0 cellpadding=2 cellspacing=0 width=749>
+		<tr>
+		<td colspan=5><img src="#request.imagedir#/spacer.gif" width="1" height="35" border="0" alt=""></td>
+		</tr>
+		<tr>
+		<td>&nbsp;</td>
+		<td colspan=4>
+			<table width="100%">
+				<tr>
+					<td><span class="pghdr" >Activities/Class Search by Category</span></td>
+					<td align="right"><span class="lgnusr" >#cookie.ufname# #cookie.ulname# (#cookie.ulogin#) - <strong>#cookie.ds#</strong></span></td>
+				</tr>
+			</table>
+		</td>
+		</tr>		
+		<tr>
+		<td><img src="../images/spacer.gif" width="20" height="300" border="0" alt=""></td>
+		<td valign=top>
+			<table border=0 cellpadding=2 cellspacing=0>
+			<tr>
+			<td><img src="#request.imagedir#/spacer.gif" width="120" height="1" border="0" alt=""></td>
+			</tr>
+			<tr>
+			<td valign=top nowrap><br>
+			<a href="showcategories.cfm?aID=0" class="sidenav">Infant/Toddler</a><br>			
+			<a href="showcategories.cfm?aID=1" class="sidenav">Preschool</a><br>
+			<a href="showcategories.cfm?aID=2" class="sidenav">Youth</a><br>
+			<a href="showcategories.cfm?aID=3" class="sidenav">Teen/Adult</a><br>
+			<a href="showcategories.cfm?aID=4" class="sidenav">55+ Senior Adults</a><br>
+			<a href="showcategories.cfm?aID=6" class="sidenav">Family (All Ages)</a><br>
+			<a href="showcategories.cfm?aID=5" class="sidenav">Special Population</a><br>
+			</td>
+			</tr>		
+			</table>		
+		</td>
+		<td valign=top><img src="../images/spacer.gif" width="5" height="300" border="0" alt=""></td>
+		<td valign=top colspan=2 class="bodytext" width="100%">
+			<table width=100% border="0" cellpadding="1" cellspacing="0">
+			<tr>
+			<td class="bodytext" valign=top align="right"><br><a href="index.cfm"><strong>Detailed Search</strong></a></td>			
+			</tr>
+			<tr>
+			<td valign="top">
+			<br>
+			<!--- looks for content - displays check back msg if current content not available --->
+			<cfparam name="content" default="Please check back soon for more information.">
+			<!--- the following query is on the includes/top_nav.cfm file --->
+			<cfif qCheckcontent.recordcount gt 0>
+			
+				<cfswitch expression="#url.v#">
+					<cfcase value="L">
+						<cfif qCheckcontent.ch_expire_date is not ''><!--- has expiration date --->
+							<cfif datecompare(qCheckcontent.ch_expire_date,now()) is 1>
+								<cfif fileexists('#request.filepath#/dynamiccontent/web/live/#qCheckcontent.ch_file_live#.cfm')>
+									<cffile action="read" file="#request.filepath#/dynamiccontent/web/live/#qCheckcontent.ch_file_live#.cfm" variable="content">
+								</cfif>
+							</cfif>
+						<cfelse><!--- no expiration date --->
+							<cfif fileexists('#request.filepath#/dynamiccontent/web/live/#qCheckcontent.ch_file_live#.cfm')>
+								<cffile action="read" file="#request.filepath#/dynamiccontent/web/live/#qCheckcontent.ch_file_live#.cfm" variable="content">
+							</cfif>
+						</cfif>
+					</cfcase>
+					<cfcase value="D,W">
+						<!--- get original approvers --->
+						<cfquery name="qGetApprovers" datasource="#request.dsn#">
+							select cd.ca_id
+							from th_content_data cd
+							where cd.cd_id = #qCheckContent.cd_id# 
+						</cfquery>
+						<cfset approvers = "">
+						<!--- get list of those who have marked page approved --->
+						<cfloop list="#qGetApprovers.ca_id#" index="aID">
+							<cfif listfind(qCheckcontent.ch_approved_by,aid) is 0>
+								<cfset approvers = listappend(approvers,aID)>
+							</cfif>
+						</cfloop>
+						<cfif listlen(approvers) gt 0><!--- get names of those who need to approve content, if necessary --->
+							<cfquery name="qGetNames" datasource="#request.dsn#">
+								select u.u_fname, u.u_lname
+								from th_users u
+								where u.u_uid in (#replacenocase(approvers,'|','','all')#)
+							</cfquery>
+							<!--- display names and instructions, if necessary--->
+							Changes to this page need approved by:<br>
+							<strong>
+							<cfloop query="qGetNames">
+							#u_fname# #u_lname#<br>
+							</cfloop>
+							</strong>
+							<br>
+							<cfif qCheckContent.ch_instructions is not ''>
+							<strong>Notes from Editor:</strong><br>
+							-------------------------------------<br>
+							#qCheckContent.ch_instructions#<br>
+							-------------------------------------<br><br>
+							</cfif>
+							
+						</cfif>
+						<cfif fileexists('#request.filepath#/dynamiccontent/web/draft/#qCheckcontent.ch_file_draft#.cfm')>
+							<cffile action="read" file="#request.filepath#/dynamiccontent/web/draft/#qCheckcontent.ch_file_draft#.cfm" variable="content">
+						</cfif>	
+					</cfcase>
+				</cfswitch>
+			</cfif>
+			#content#
+ 			</td>
+			</tr>			
+			</table>
+		</td>
+   		</tr>
+		</table>
+   </td>
+   <td><img src="#request.imagedir#/spacer.gif" width="1" height="128" border="0" alt=""></td>   
+  </tr>
+  <tr>
+   <td colspan="36" valign="top"><p></p></td>
+   <td><img src="#request.imagedir#/spacer.gif" width="1" height="11" border="0" alt=""></td>
+  </tr>
+  <cfinclude template="../footer.cfm">
+
+</table>
+</cfoutput>
+<CFINCLUDE template="/portalINC/googleanalytics.cfm">
+</body>
+</html>

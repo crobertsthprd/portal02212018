@@ -1,0 +1,730 @@
+
+<cfif cookie.loggedin is not 'yes'>
+	<cflocation url="../index.cfm?msg=3">
+	<cfabort>
+</cfif>
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+	<title>Patron Information</title>
+</head>
+
+<body leftmargin="0" topmargin="0">
+
+<!--- <cfif 1 is 2>
+call by view_patron_hist.cfm?PrimaryPatronID=#cookie.uid#&DisplayMode=<DisplayModeParam>
+
+Use:
+SELECT   DISTINCT PATRONS.PATRONID 
+FROM     PATRONS PATRONS
+         INNER JOIN VALIDPASSES VALIDPASSES ON PATRONS.PATRONID=VALIDPASSES.PRIMARYPATRONID
+         INNER JOIN REG REG ON PATRONS.PATRONID=REG.PRIMARYPATRONID
+         INNER JOIN VALIDASSESSMENTS VALIDASSESSMENTS ON PATRONS.PATRONID=VALIDASSESSMENTS.PRIMARYPATRONID
+         INNER JOIN CLASSES CLASSES ON REG.TERMID=CLASSES.TERMID AND REG.FACID=CLASSES.FACID AND REG.CLASSID=CLASSES.CLASSID 
+WHERE    CLASSES.ENDDT < timestamp
+
+to see "busy" patrons for testing
+</cfif> --->
+
+<cfparam name="DisplayMode" default="M">
+<!--- DisplayMode codes:
+A = assessment status
+P = Pass Status
+R = Registrations
+ --->
+
+<cfset localfac = "WWW">
+<cfset localnode = "W1">
+<cfset DS = "thirst">
+
+<!--- <cfif not IsDefined("PrimaryPatronID")>
+	<strong>No patron ID specified.</strong>
+	<cfabort>
+</cfif> --->
+
+<cfoutput>
+
+<cfquery datasource="#request.reg_dsn#" name="GetPrimaryName">
+	SELECT   lastname, firstname, middlename
+	FROM     Patrons 
+	WHERE    PatronID = #cookie.uid#
+</cfquery>
+
+<cfquery datasource="#request.reg_dsn#" name="GetPassTypes">
+	select passtype
+	from passtype
+</cfquery>
+
+<!--- get last invoice for balance --->
+<cfquery datasource="#request.reg_dsn#" name="GetCurrentBalance" maxrows="1">
+	Select startingbalance, newcredit, TenderedCash, TenderedCheck, TenderedCC, TenderedChange, TotalFees
+	from INVOICE
+	where PRIMARYPATRONID = #cookie.uid#
+	AND      invoice.isvoided = false
+	order by dt desc
+</cfquery>
+
+
+<cfquery datasource="#request.reg_dsn#" name="CountDropinHistory">
+	SELECT   count(*) as tmp
+	FROM     dropinhistory
+	where    primaryPatronID = #cookie.uid#
+</cfquery>
+
+<cfquery datasource="#request.reg_dsn#" name="CheckAssmtStatus">
+	SELECT   ALLASSESSMENTS.*, INVOICE.DT, 
+	         PATRONS.PATRONLOOKUP, PATRONS.LASTNAME, PATRONS.FIRSTNAME, 
+	         PATRONS.MIDDLENAME 
+	FROM     ALLASSESSMENTS
+	         INNER JOIN INVOICE INVOICE ON ALLASSESSMENTS.INVOICEFACID=INVOICE.INVOICEFACID AND ALLASSESSMENTS.INVOICENUMBER=INVOICE.INVOICENUMBER
+	         INNER JOIN PATRONS PATRONS ON ALLASSESSMENTS.PATRONID=PATRONS.PATRONID 
+	WHERE    ALLASSESSMENTS.PRIMARYPATRONID = #cookie.uid#
+	AND      ALLASSESSMENTS.valid = true
+	AND      ALLASSESSMENTS.assmtexpires >= date
+	ORDER BY INVOICE.DT DESC, PATRONS.LASTNAME, PATRONS.FIRSTNAME, ALLASSESSMENTS.assmteffective
+</cfquery>
+
+<cfquery datasource="#request.reg_dsn#" name="GetHousehold">
+	SELECT   PATRONS.patronlookup, PATRONS.lastname, PATRONS.firstname, 
+	         PATRONS.middlename, PATRONS.gender, PATRONS.dob, 
+	         RELATIONSHIPTYPE.relationshipdesc, PATRONRELATIONS.addressid,  patronrelations.indistrict,
+	         PATRONS.patroncomment, patrons.verified, patrons.patronid, patronrelations.detachdate
+	FROM     patronrelations PATRONRELATIONS
+	         INNER JOIN patrons PATRONS ON PATRONRELATIONS.secondarypatronid=PATRONS.patronid
+	         INNER JOIN relationshiptype RELATIONSHIPTYPE ON PATRONRELATIONS.relationtype=RELATIONSHIPTYPE.relationtype
+	where    patronRelations.PrimaryPatronid = #cookie.uid#
+	and      patrons.inactive = false
+	order by patronrelations.relationtype, upper(patrons.lastname), upper(patrons.firstname)
+</cfquery>
+
+<cfif GetHousehold.addressid is "">
+	<strong>No history information available: PPID: #cookie.uid#</strong>
+	<cfabort>
+</cfif>
+
+<cfquery datasource="#request.reg_dsn#" name="GetPatronContactData">
+	SELECT   PATRONCONTACT.contactdata, CONTACTMETHOD.contactmethod, patroncontact.patronid
+	FROM     patroncontact PATRONCONTACT
+	         INNER JOIN contactmethod CONTACTMETHOD ON PATRONCONTACT.contacttype=CONTACTMETHOD.contacttype 
+	WHERE    PATRONCONTACT.patronid in (#ValueList(GetHousehold.patronid)#)
+	AND      contactmethod.contacttype in ('H','W','C')
+	ORDER BY CONTACTMETHOD.listorder
+</cfquery>
+
+<cfquery name="GetAddress" datasource="#request.reg_dsn#">
+	SELECT   address1, address2, city, state, zip
+	FROM     patronaddresses 
+	WHERE    addressid = #GetHousehold.addressid#
+</cfquery>
+
+<cfquery datasource="#request.reg_dsn#" name="GetTerms">
+	select distinct termid, termname
+	from terms
+</cfquery>
+
+<form method="post" action="patronhistory.cfm?PrimaryPatronID=#cookie.uid#">
+<cfif isdefined('displaymode')>
+	<input name="displaymode" type="hidden" value="#displaymode#">
+</cfif>
+
+<cfif IsDefined("AcctMode")>
+	<input name="AcctMode" type="hidden" value="1">
+</cfif>
+
+<table border="0" width="650" cellpadding="4" cellspacing="0">
+	<cfif displaymode is 'm'>
+	<tr>
+	<td colspan=11 class="pghdr">My Information</td>
+	</tr>
+	<TR>
+		<TD colspan="11">
+		
+			<table width="650" border=0	 cellpadding=3 cellspacing="0">
+				<cfset showids = 1>
+				<cfset showsecheader = 1>
+
+				<cfquery name="Chk4OotherPrimaryReg" datasource="#request.reg_dsn#">
+					SELECT   distinct REG.primarypatronid, PATRONS.patronlookup, reg.patronid 
+					FROM     reg REG
+					         INNER JOIN patrons PATRONS ON REG.primarypatronid=PATRONS.patronid 
+					WHERE    REG.primarypatronid != #GetHousehold.patronid[1]#
+					AND      REG.patronid in (#valuelist(GetHousehold.patronid)#)
+					AND      reg.regstatus != 'V'
+				</cfquery>
+
+				<cfquery name="Chk4OotherPrimaryPass" datasource="#request.reg_dsn#">
+					SELECT   distinct passmembers.primarypatronid, PATRONS.patronlookup, passmembers.patronid 
+					FROM     passmembers
+					         INNER JOIN patrons PATRONS ON passmembers.primarypatronid=PATRONS.patronid 
+					WHERE    passmembers.primarypatronid != #GetHousehold.patronid[1]#
+					AND      passmembers.patronid in (#valuelist(GetHousehold.patronid)#)
+				</cfquery>
+
+				<cfquery name="Chk4OotherPrimaryAssmt" datasource="#request.reg_dsn#">
+					SELECT   distinct assessmentmembers.primarypatronid, PATRONS.patronlookup, assessmentmembers.patronid 
+					FROM     assessmentmembers
+					         INNER JOIN patrons PATRONS ON assessmentmembers.primarypatronid=PATRONS.patronid 
+					WHERE    assessmentmembers.primarypatronid != #GetHousehold.patronid[1]#
+					AND      assessmentmembers.patronid in (#valuelist(GetHousehold.patronid)#)
+				</cfquery>
+
+				<cfloop query="GetHousehold">
+					<cfset TmpArray = ArrayNew(2)>
+					<cfset rows = 0>
+
+					<cfloop query="Chk4OotherPrimaryReg">
+
+						<cfif GetHousehold.patronid[GetHousehold.currentrow] is Chk4OotherPrimaryReg.patronid[Chk4OotherPrimaryReg.currentrow]>
+	
+							<cfif ArrayLen(TmpArray) is 0>
+								<cfset TmpArray[1][1] = primarypatronid>
+								<cfset TmpArray[1][2] = patronlookup>
+								<cfset rows = 1>
+							<cfelse>
+								<cfset DoThisOne = 0>
+	
+								<cfloop from="1" to="#rows#" step="1" index="n">
+	
+									<cfif TmpArray[n][1] is not primarypatronid>
+										<cfset DoThisOne = 1>
+									</cfif>
+	
+								</cfloop>
+	
+								<cfif DoThisOne is 1>
+									<cfset rows = rows + 1>
+									<cfset TmpArray[rows][1] = primarypatronid>
+									<cfset TmpArray[rows][2] = patronlookup>
+								</cfif>
+	
+							</cfif>
+
+						</cfif>
+
+					</cfloop>
+
+					<cfset rows = 0>
+
+					<cfloop query="Chk4OotherPrimaryPass">
+
+						<cfif GetHousehold.patronid[GetHousehold.currentrow] is Chk4OotherPrimaryPass.patronid[Chk4OotherPrimaryPass.currentrow]>
+
+							<cfif ArrayLen(TmpArray) is 0>
+								<cfset TmpArray[1][1] = primarypatronid>
+								<cfset TmpArray[1][2] = patronlookup>
+								<cfset rows = 1>
+							<cfelse>
+								<cfset DoThisOne = 0>
+	
+								<cfloop from="1" to="#rows#" step="1" index="n">
+	
+									<cfif TmpArray[n][1] is not primarypatronid>
+										<cfset DoThisOne = 1>
+									</cfif>
+	
+								</cfloop>
+	
+								<cfif DoThisOne is 1>
+									<cfset rows = rows + 1>
+									<cfset TmpArray[rows][1] = primarypatronid>
+									<cfset TmpArray[rows][2] = patronlookup>
+								</cfif>
+	
+							</cfif>
+
+						</cfif>
+
+					</cfloop>
+
+					<cfset rows = 0>
+
+					<cfloop query="Chk4OotherPrimaryAssmt">
+
+						<cfif GetHousehold.patronid[GetHousehold.currentrow] is Chk4OotherPrimaryAssmt.patronid[Chk4OotherPrimaryAssmt.currentrow]>
+
+							<cfif ArrayLen(TmpArray) is 0>
+								<cfset TmpArray[1][1] = primarypatronid>
+								<cfset TmpArray[1][2] = patronlookup>
+								<cfset rows = 1>
+							<cfelse>
+								<cfset DoThisOne = 0>
+	
+								<cfloop from="1" to="#rows#" step="1" index="n">
+	
+									<cfif TmpArray[n][1] is not primarypatronid>
+										<cfset DoThisOne = 1>
+									</cfif>
+	
+								</cfloop>
+	
+								<cfif DoThisOne is 1>
+									<cfset rows = rows + 1>
+									<cfset TmpArray[rows][1] = primarypatronid>
+									<cfset TmpArray[rows][2] = patronlookup>
+								</cfif>
+	
+							</cfif>
+
+						</cfif>
+
+					</cfloop>
+
+					<cfif showids is 1>
+						<TR bgcolor="CCCCCC">
+							<TD class="lgnusr" nowrap><strong>#lastname#, #firstname# #middlename# (#patronlookup#)</strong></TD>
+							<!--- <CF_HowLongHasItBeen DATE1="#DOB#" DATE2="#now()#" ADDWORDS="Yes" Abbreviated="yes"> --->
+							<TD class="lgnusr" align=right>#dateformat(dob,"mm/dd/yyyy")#<!--- (#HowLong_Years#, #HowLong_Months#) ---></TD>
+							<TD class="lgnusr" align=right colspan=3><strong>
+							<cfif GetHousehold.InDistrict is 1>
+								In District
+							<cfelseif GetHousehold.verified is 0>
+								To Be Verified
+							<cfelse>
+								Out Of District
+							</cfif>
+							</strong>
+							</TD>
+						</TR>
+						<TR>
+							<TD valign="top" colspan=2>
+								#GetAddress.address1#<cfif GetAddress.address2 is not "">, #GetAddress.address2#</cfif>
+								<br>#GetAddress.city#, #GetAddress.state# #left(GetAddress.zip,5)#
+							</TD>
+							<TD valign="top" colspan=3>
+							<table border=0 cellpadding=1 cellspacing=0 width=400 align="right">
+								<tr>
+								<td rowspan="6" nowrap><strong>Contact<br>Information</strong></td>
+								</tr>
+								<cfquery name="qGetEmail" datasource="#request.reg_dsn#">
+									select loginemail
+									from patroninfo
+									where primarypatronID = #cookie.uid#
+									and patronlookup = '#patronlookup#'
+								</cfquery>
+								<cfset contactlist = "Home Phone,Work Phone,Cell Phone">
+								<cfloop query="GetPatronContactData"><!--- loop over current contact types --->
+								<tr>
+								<td class="bodytext">#contactmethod#:</td>
+								<td class="bodytext" align=right><cfif contactdata is not ''>#contactdata#<cfelse><em>No Entry</em></cfif></td>
+								<td class="bodytext" align=right><cfif GetHousehold.patronlookup is cookie.ulogin><a href="javascript:void(0);" onclick="window.open('editcontact.cfm?type=#removechars(contactmethod,2,len(contactmethod)-1)#&pID=#patronID#','edit','width=400,height=220,statusbar=0,scrollbars=1,resizable=0');">Add / Edit</a><cfelse><img src="#request.imagedir#/spacer.gif" width="47" height="1" border="0" alt=""></cfif></td>
+								</tr>
+								<!--- if value exists, delete from original list --->
+								<cfif listfind(contactlist,contactmethod) gt 0>
+									<cfset contactlist = listdeleteat(contactlist,listfindnocase(contactlist,contactmethod))>
+								</cfif>
+								
+								</cfloop>
+								<!--- if values still in list, display for editing purposes --->
+								<cfif listlen(contactlist) gt 0>
+									<cfloop list="#contactlist#" index="contacttype">
+										<tr>
+										<td class="bodytext">#contacttype#:</td>
+										<td class="bodytext" align=right><em>No Entry</em></td>
+										<td class="bodytext" align=right><cfif GetHousehold.patronlookup is cookie.ulogin><a href="javascript:void(0);" onclick="window.open('editcontact.cfm?type=#removechars(contacttype,2,len(contacttype)-1)#&pID=#patronID#','edit','width=400,height=220,statusbar=0,scrollbars=1,resizable=0');">Add / Edit</a><cfelse><img src="#request.imagedir#/spacer.gif" width="47" height="1" border="0" alt=""></cfif></td>
+										</tr>
+									</cfloop>
+								</cfif>
+								<tr>
+								<td class="bodytext">Portal Email:</td>
+								<td class="bodytext" align=right><cfif qGetEmail.loginemail is ''><em>No Entry</em><cfelse>#qGetEmail.loginemail#</cfif></td>
+								<td class="bodytext" align=right><cfif GetHousehold.patronlookup is cookie.ulogin><a href="javascript:void(0);" onclick="window.open('editcontact.cfm?type=E&pID=#patronID#&plkup=#patronlookup#','edit','width=400,height=220,statusbar=0,scrollbars=1,resizable=0');">Add / Edit</a><cfelse><img src="#request.imagedir#/spacer.gif" width="47" height="1" border="0" alt=""></cfif></td>
+								</tr>
+							</table>
+							</TD>
+						</TR>
+						<cfif patroncomment is not "">
+							<TR>
+								<TD colspan="4"><strong>#patroncomment#</strong></TD>
+							</TR>
+						</cfif>
+
+						<cfset showids = 0>
+					<cfelse>
+						<cfquery name="qGetEmail" datasource="#request.reg_dsn#">
+							select loginemail
+							from patroninfo
+							where patronlookup = '#patronlookup#'
+						</cfquery>
+
+						<cfif showsecheader is 1>
+							<TR bgcolor="ededed">
+								<TD colspan="5"><strong>Secondary Patrons on this Account</strong></TD>
+							</TR>
+							<cfset showsecheader = 0>
+						</cfif>
+
+						<tr valign="top">
+							<TD>#lastname#, #firstname# #middlename# </TD>
+							<TD align=right><strong>(#patronlookup#)</strong></TD>
+							<TD align=right><cfif gender is "M">Male<cfelseif gender is "F">Female</cfif> #relationshipdesc# - (#dateformat(dob,"mm/dd/yyyy")#)</TD>
+							<td class="bodytext" align=right><cfif qGetEmail.loginemail is ''><em>No Email on File</em><cfelse>#qGetEmail.loginemail#</cfif></td>
+							<td class="bodytext" align=right><cfif patronlookup is cookie.ulogin><a href="javascript:void(0);" onclick="window.open('editcontact.cfm?type=E&pID=#patronID#&plkup=#patronlookup#','edit','width=400,height=220,statusbar=0,scrollbars=1,resizable=0');">Add / Edit</a><cfelse><img src="#request.imagedir#/spacer.gif" width="33" height="1" border="0" alt=""></cfif></td>
+							
+						</tr>
+						<cfif detachdate is not "">
+							<tr>
+								<td colspan="5" align="left"><strong>Above patron scheduled to be detached on #dateformat(detachdate,"mm/dd/yyyy")#</strong></td>
+							</tr>
+						</cfif>
+
+						<cfif ArrayLen(TmpArray) is not 0>
+							<TR>
+								<TD colspan="5">
+									<strong>Other Primaries w/ History:</strong>
+									<cfloop from="1" to="#ArrayLen(TmpArray)#" step="1" index="n">
+										#TmpArray[n][2]#
+									</cfloop>
+								</TD>
+							</TR>
+						</cfif>
+
+					</cfif>
+
+				</cfloop>
+
+			</table>
+			
+		</TD>
+	</TR>
+	</cfif>
+	<cfif DisplayMode is "A">
+		<TR>
+			<TD colspan="11">
+				<table width="650" border="0" cellpadding=1 cellspacing=0>
+					<TR>
+						<TD colspan="3" class="pghdr">Assessment Status</TD>
+					</TR>
+			
+					<tr valign="bottom" bgcolor="cccccc">
+						<TD><strong>Patron</strong></TD>
+						<TD><strong>Relation</strong></TD>
+						<TD><strong>Expires</strong></TD>
+					</tr>
+					<cfloop query="CheckAssmtStatus">
+						<cfif assmtexpires less than now() + 30>
+							<cfset tmp = 'class = "BlackOnYellow"'>
+						<cfelse>
+							<cfset tmp = ''>
+						</cfif>
+
+						<cfquery datasource="#request.reg_dsn#" name="GetRelationType">
+							SELECT   RELATIONSHIPTYPE.relationshipdesc 
+							FROM     patronrelations PATRONRELATIONS
+							         INNER JOIN relationshiptype RELATIONSHIPTYPE ON PATRONRELATIONS.relationtype=RELATIONSHIPTYPE.relationtype 
+							WHERE    PATRONRELATIONS.primarypatronid = #cookie.uid# 
+							AND      PATRONRELATIONS.secondarypatronid = #patronid#
+						</cfquery>
+
+						<tr>
+							<TD>#lastname#, #firstname# #middlename#</TD>
+							<TD>#GetRelationType.relationshipdesc#</TD>
+							<TD >#Dateformat(assmtexpires,"mm-dd-yyyy")#</TD>
+						</tr>
+					</cfloop>
+				</table>
+			</TD>
+		</TR>
+	</cfif>
+
+	<cfquery datasource="#request.reg_dsn#" name="CheckPassStatus">
+		SELECT   *
+		FROM     validpasses
+		WHERE    primarypatronid = #cookie.uid#
+		ORDER BY passtype, passexpires
+	</cfquery>
+
+	<cfif DisplayMode is "P">
+		<TR>
+			<TD colspan="11">
+				<table width="650" border="0" cellpadding=1 cellspacing=0>
+					<TR>
+						<TD colspan="6" class="pghdr"><strong>Pass Status</strong> (Count: #CheckPassStatus.recordcount#)</TD>
+					</TR>
+			
+					<tr valign="bottom" bgcolor="cccccc">
+						<TD><strong>Invoice</strong></TD>
+						<TD><strong>Patron</strong></TD>
+						<TD nowrap><strong>Date Added</strong></TD>
+						<TD><strong>Pass Type</strong></TD>
+						<TD nowrap><strong>Remaining Punches</strong></TD>
+						<TD><strong>Expires</strong></TD>
+					</tr>
+					<cfloop query="CheckPassStatus">
+
+						<cfquery datasource="#request.reg_dsn#" name="GetPassDetails">
+							select   *
+						    from     validpasses
+						    WHERE    primarypatronid = #PrimaryPatronID#
+						    AND      patronid = #PatronID#
+						    and      ec = #CheckPassStatus.ec[currentrow]#
+						</cfquery>
+						<cfif GetPassDetails.recordcount is not 0>
+
+							<cfloop query="GetPassDetails">
+
+								<cfif GetPassDetails.passexpires less than now() + 7>
+									<cfset tmp = 'class = "BlackOnYellow"'>
+								<cfelse>
+									<cfset tmp = ''>
+								</cfif>
+
+								<cfif (CheckPassStatus.passallocation[CheckPassStatus.currentrow] is 0) or (CheckPassStatus.passallocation[CheckPassStatus.currentrow] is not 0 and CheckPassStatus.passuses[CheckPassStatus.currentrow] is not CheckPassStatus.passallocation[CheckPassStatus.currentrow])>
+
+									<cfquery datasource="#request.reg_dsn#" name="GetPatronData">
+										select lastname, firstname, middlename
+			 							from patrons
+										where patronid = #GetPassDetails.PatronID#
+									</cfquery>
+
+									<tr >
+										<TD nowrap><cfset str1 = CheckPassStatus.InvoiceFacID[CheckPassStatus.currentrow] & "-" & CheckPassStatus.InvoiceNumber[CheckPassStatus.currentrow]><a href="../classes/class_summary_receipt.cfm?invoicelist=#str1#" target="_blank">#str1#</a></TD>
+										<TD nowrap>#GetPatronData.lastname#, #GetPatronData.firstname# #GetPatronData.middlename#</TD>
+										<TD  nowrap>#Dateformat(GetPassDetails.dtadded,"mm-dd-yyyy")#</TD>
+										<TD nowrap>
+											<cfquery datasource="#request.reg_dsn#" name="GetPassData2">
+												SELECT   passdescription
+												FROM     passtype
+												WHERE    passtype = '#CheckPassStatus.passtype[CheckPassStatus.CurrentRow]#'
+											</cfquery>
+			
+											#GetPassData2.passdescription#
+										</TD>
+										<TD nowrap>
+											<cfif CheckPassStatus.passallocation[CheckPassStatus.currentrow] is not 0 and CheckPassStatus.passuses[CheckPassStatus.currentrow] is not CheckPassStatus.passallocation[CheckPassStatus.currentrow]>
+												#CheckPassStatus.passallocation[CheckPassStatus.currentrow] - CheckPassStatus.passuses[CheckPassStatus.currentrow]#
+											</cfif>
+										</TD>
+										<TD nowrap>#Dateformat(GetPassDetails.passexpires,"mm-dd-yyyy")#</TD>
+									</tr>
+								</cfif>
+							</cfloop>
+
+						</cfif>
+					</cfloop>
+				</table>
+			</TD>
+		</TR>
+
+	</cfif>
+
+	<cfquery datasource="#request.reg_dsn#" name="GetCurrentRegistrations">
+		SELECT   Reg.*, Classes.Description, Classes.StartDT, Classes.EndDT, Classes.suncount, Classes.moncount,Classes.tuecount,Classes.wedcount,Classes.thucount,Classes.fricount,Classes.satcount,
+		         patrons.lastname, patrons.firstname, patrons.middlename, Terms.TermName, 
+		         regstatuscodes.StatusDescription, reg.deferred, reg.deferredpaid,reg.regid,
+		         reg.regstatus, reg.queuedfordrop, facilities.name as facname
+		FROM     Reg Reg
+		         INNER JOIN Classes Classes ON Reg.TermID=Classes.TermID AND Reg.FacID=Classes.FacID AND Reg.ClassID=Classes.ClassID
+		         INNER JOIN patrons patrons ON Reg.PatronID=patrons.PatronID
+		         INNER JOIN Terms Terms ON Reg.TermID=Terms.TermID AND Reg.FacID=Terms.FacID
+		         INNER JOIN regstatuscodes regstatuscodes ON Reg.regstatus=regstatuscodes.StatusCode
+				 inner join facilities on reg.facid = facilities.facid
+		WHERE    reg.PrimaryPatronID = #cookie.uid#
+		AND      reg.RegStatus in ('E','W','A','R','H')
+		AND      Classes.EndDT >= now()
+		ORDER BY patrons.lastname, patrons.firstname, reg.termid, reg.classid
+	</cfquery>
+	
+	<cfif DisplayMode is "R">
+		<TR>
+			<TD colspan="11">
+				<table border="0" width="800" cellpadding="3" cellspacing="0">
+					<TR><TD colspan="8" class="pghdr"><br>Current Registrations</TD>
+					<td align="right" valign="bottom"><a href="javascript:window.print();">Print</a></td>
+					</TR>
+					<TR valign="bottom" bgcolor="cccccc">
+						<TD><strong>Class ID</strong></TD>
+						<TD colspan=2><strong>Class Name</strong></TD>
+						<TD><strong>Date(s)</strong></TD>
+						<TD><strong>Time</strong></TD>
+						<TD><strong>Day(s)</strong></TD>
+						<TD><strong>Facility</strong></TD>
+						<TD><strong>Patron</strong></TD>
+						<TD><strong>Status</strong></TD>
+					</TR>
+					<cfloop query="GetCurrentRegistrations">
+						 <cfset tmpweekdays = "">
+						 <cfif suncount is 0><cfset tmpweekdays = tmpweekdays & ""><cfelse><cfset tmpweekdays = tmpweekdays & "/Su"></cfif>
+						 <cfif moncount is 0><cfset tmpweekdays = tmpweekdays & ""><cfelse><cfset tmpweekdays = tmpweekdays & "/M"></cfif>
+						 <cfif tuecount is 0><cfset tmpweekdays = tmpweekdays & ""><cfelse><cfset tmpweekdays = tmpweekdays & "/T"></cfif>
+						 <cfif wedcount is 0><cfset tmpweekdays = tmpweekdays & ""><cfelse><cfset tmpweekdays = tmpweekdays & "/W"></cfif>
+						 <cfif thucount is 0><cfset tmpweekdays = tmpweekdays & ""><cfelse><cfset tmpweekdays = tmpweekdays & "/Th"></cfif>
+						 <cfif fricount is 0><cfset tmpweekdays = tmpweekdays & ""><cfelse><cfset tmpweekdays = tmpweekdays & "/F"></cfif>
+						 <cfif satcount is 0><cfset tmpweekdays = tmpweekdays & ""><cfelse><cfset tmpweekdays = tmpweekdays & "/S"></cfif>
+						 
+						 <cfif len(tmpweekdays) is not 0>
+						  <cfset tmpweekdays = right(tmpweekdays,len(tmpweekdays)-1)>
+						 </cfif>
+						 
+						 <!--- consolidate day of week --->
+						 <cfif tmpweekdays is "M/T/W/Th/F">
+						  <cfset tmpweekdays = "M-F">
+						 <cfelseif tmpweekdays is "M/T/W/Th">
+						  <cfset tmpweekdays = "M-Th">
+						 <cfelseif tmpweekdays is "M/T/W">
+						  <cfset tmpweekdays = "M-W">
+						 </cfif>					
+						<TR valign="top">
+							<TD>#ClassID#</TD>
+							<TD colspan=2>#Description#</TD>
+							<td>#dateformat(startdt,'m/dd/yy')#<cfif dateformat(startdt,'mm/dd/yyyy') is not dateformat(enddt,'mm/dd/yyyy')> - #dateformat(enddt,'m/dd/yy')#</cfif></td>
+							<td>#timeformat(startdt,'h:mm tt')#-#timeformat(enddt,'h:mm tt')#</td>
+							<td>#tmpweekdays#</td>
+							<TD>#facname#</TD>
+							<TD>#lastname#, #firstname# #middlename#</TD>
+							<TD>
+								<cfif RegStatus is "E">
+									Enrolled
+								<cfelseif RegStatus is "W">
+									Wait List
+								<cfelseif RegStatus is "A">
+									Alert
+								<cfelseif RegStatus is "R">
+									Reserved
+								<cfelseif RegStatus is "H">
+									Hold
+								</cfif>
+	
+								<cfif deferred is 1>(Def)</cfif>
+								<cfif depositonly is 1>(Dep)</cfif>
+							</TD>
+						</TR>
+					</cfloop>
+				</table>
+			</TD>
+		</TR>
+	</cfif>
+
+	<cfquery datasource="#request.reg_dsn#" name="GetAccountHistory">
+		SELECT   Activity.Debit, Activity.Credit, Invoice.PrimaryPatronID,activity.passmodification,
+		         Activity.TermID, Activity.FacID, Activity.Activity, activity.regid,
+		         Activity.InvoiceFacID, Activity.InvoiceNumber, activity.patronid,
+		         Patrons.lastname, Patrons.firstname, patrons.middlename, Invoice.DT, 
+		         Activity.ActivityCode, Invoice.startingbalance, invoice.printable,
+		         Invoice.TotalFees, Invoice.TenderedCash, invoice.cca, invoice.cced, invoice.ccv,
+		         Invoice.TenderedCheck, Invoice.TenderedCC, Invoice.TenderedChange, invoice.ccType,
+		         Activity.IsMiscFee, activity.activitycode, invoice.cashoutid, Activitycodes.Activitydescription,
+		         invoice.newcredit, userlogin, userlast, userfirst, invoice.isvoided,
+		         Activity.deferred, Activity.depositonly, Activity.overridden, activity.upgradetype,
+		         coalesce(invoice.userid,0) as userid, classes.description as class_desc
+		FROM     Activity Activity
+		         INNER JOIN Invoice Invoice ON Activity.InvoiceFacID=Invoice.InvoiceFacID AND Activity.InvoiceNumber=Invoice.InvoiceNumber
+		         INNER JOIN Patrons Patrons ON Patrons.PatronID=Activity.PatronID
+		         LEFT OUTER JOIN thusers ON invoice.userid=thusers.userid
+		         LEFT OUTER JOIN activitycodes ON Activity.ActivityCode=activitycodes.activitycode
+		         LEFT OUTER JOIN classes ON activity.termid=classes.termid AND activity.facid=classes.facid AND activity.activity=classes.classid
+		WHERE    activity.PrimaryPatronID = #cookie.uid#
+		AND
+					<cfif IsDefined("ShowLimit")>
+						year(invoice.dt) * 12 + month(invoice.dt) between #left(ShowLimit,5)# and #right(ShowLimit,5)#
+					<cfelse>
+						date(dt) - current_date <= 180
+						<!--- datediff(invoice.dt,date) <= 180 --->
+					</cfif>
+					<!--- <cfif not IsDefined("AcctMode")>
+						AND      invoice.isvoided = false
+					</cfif> --->
+		ORDER BY Invoice.DT desc, activity.line
+	</cfquery>
+
+	<cfif GetCurrentBalance.RecordCount is not 0>
+		<cfset NetBalance = GetCurrentBalance.startingbalance+GetCurrentBalance.newcredit+GetCurrentBalance.TenderedCash+GetCurrentBalance.TenderedCheck+GetCurrentBalance.TenderedCC-GetCurrentBalance.TenderedChange-GetCurrentBalance.TotalFees>
+	</cfif>
+
+	<cfset ThisInvoice = 0>
+	<cfset ThisFac = "">
+
+	<cfif DisplayMode is "I">
+	<tr>
+	<td valign="top"><br>
+		<table border=0 cellpadding=3 cellspacing="0" width=670>
+		<TR>
+			<TD class="pghdr">Invoice History</td>
+			<td colspan=3 align=right>
+			<select  name="ShowLimit" class="form_input" > of data.
+				<cfset ThisMonth2 = month(now())>
+				<cfset ThisYear2 = year(now())>
+				<cfset ThisMonth1 = ThisMonth2 - 6>
+				<cfset ThisYear1 = ThisYear2>
+
+				<cfif ThisMonth1 lt 1>
+					<cfset ThisMonth1 = ThisMonth1 + 12>
+					<cfset ThisYear1 = ThisYear1 - 1>
+				</cfif>
+
+				<cfset LastMonth = datediff("m","2004-02-01",now())>
+
+				<cfloop from="0" to="#LastMonth#" step="1" index="n">
+					<option <cfif IsDefined("ShowLimit") and ShowLimit is ThisYear1 * 12 + ThisMonth1 & "-" & ThisYear2 * 12 + ThisMonth2>selected</cfif> value="#ThisYear1 * 12 + ThisMonth1#-#ThisYear2 * 12 + ThisMonth2#">#numberformat(ThisMonth1,'00')#/#ThisYear1# to #numberformat(ThisMonth2,'00')#/#ThisYear2# 
+					<cfset ThisMonth1 = ThisMonth1 - 1>
+
+					<cfif ThisMonth1 lt 1>
+						<cfset ThisMonth1 = ThisMonth1 + 12>
+						<cfset ThisYear1 = ThisYear1 - 1>
+					</cfif>
+
+					<cfset ThisMonth2 = ThisMonth2 - 1>
+
+					<cfif ThisMonth2 lt 1>
+						<cfset ThisMonth2 = ThisMonth2 + 12>
+						<cfset ThisYear2 = ThisYear2 - 1>
+					</cfif>
+
+				</cfloop>
+			</select>
+			<input type="Submit" value="View Other Invoices" class="form_submit">
+			
+			</TD>
+		</TR>
+		<!--- <cfif IsDefined("netbalance") and NetBalance is not "">
+			<TR>
+				<TD colspan="5" align="right"><strong>Account Balance</strong></TD>
+				<TD colspan="2" align="right"><strong>#DecimalFormat(NetBalance)#</strong></TD>
+			</TR>
+		</cfif> --->
+	
+		<tr bgcolor="cccccc">
+		<td class="bodytext"><strong>Invoice Number</strong></td>
+		<td class="bodytext" align=right><strong>Invoice Date</strong></td>
+		<td class="bodytext" align=right><strong>Starting Balance</strong></td>
+		<td class="bodytext" align=right><strong>Ending Balance</strong></td>
+		</tr>
+		<cfloop query="GetAccountHistory">
+	
+			<cfif IsVoided is 0 or IsDefined("AcctMode")>
+				<cfif InvoiceFacID is not ThisFac or InvoiceNumber is not ThisInvoice>
+					<cfset RunningDedit = 0>
+					<cfset RunningCredit = 0>
+					<cfset ThisInvoice = InvoiceNumber>
+					<cfset ThisFac = InvoiceFacID>
+					<cfset EndingBalance = startingbalance+newcredit+TenderedCash+TenderedCheck+TenderedCC-TenderedChange-TotalFees>
+					<cfset str1 = GetAccountHistory.InvoiceFacID & "-" & GetAccountHistory.InvoiceNumber>
+					<TR valign="top">
+						<td class="bodytext">
+							<cfif printable is 1>
+								<a href="javascript:void(0);" onclick="window.open('../classes/class_summary_receipt.cfm?invoicelist=#GetAccountHistory.InvoiceFacID#-#GetAccountHistory.InvoiceNumber#&p=y','receipt','toolbars=no, scrollbars=yes, resizable');">#GetAccountHistory.InvoiceFacID#-#GetAccountHistory.InvoiceNumber#</a>
+							</cfif>
+						</td>
+						<td class="bodytext" align=right>#DateFormat(DT,"mm/dd/yyyy")#</td>
+						<td class="bodytext" align=right>$ #DecimalFormat(startingbalance)#</td>
+						<td class="bodytext" align=right>$ #DecimalFormat(EndingBalance)#</td>
+					</TR>
+				</cfif>
+		</cfif>
+		</cfloop>
+		</table>
+	</td>
+	
+	</tr>
+		
+	</cfif>
+  <cfinclude template="../histfooter.cfm">
+</table>
+
+
+</form>
+
+</cfoutput>
+
+</body>
+</html>

@@ -1,0 +1,617 @@
+<CFABORT>
+
+<cfif cookie.loggedin is not 'yes'>
+	<cflocation url="../index.cfm?msg=3">
+	<cfabort>
+</cfif>
+
+<cfset tc = gettickcount()>
+
+
+
+
+<!--- <CFIF NOT Isdefined("application.GetFacilities")>
+<cfquery name="application.GetFacilities" datasource="#request.reg_dsn#">
+	select facid, name
+	from facilities
+	where ShowInReg = true
+	and facid != 'WWW'
+	ORDER BY name
+</cfquery>
+</CFIF>
+
+<!--- fetch only instructors scheduled for open terms --->
+<CFIF NOT Isdefined("application.GetInstructors")>
+<cfquery datasource="#request.reg_dsn#" name="application.GetInstructors">
+	SELECT   DISTINCT InstructorID, 
+	         LastName || ', ' || FirstName AS name
+	FROM     Instructors 
+	WHERE    CurrentlyActive = true
+	ORDER BY LastName || ', ' || FirstName
+</cfquery>
+</CFIF> --->
+
+<!--- <cfset dopsds = request.reg_dsn> --->
+
+
+<cfoutput>
+<html>
+<head>
+<title>Tualatin Hills Park and Recreation District</title>
+<meta http-equiv="Content-Type" content="text/html;">
+</head>
+<body bgcolor="ffffff" topmargin="0" leftmargin="0" marginheight="0" marginwidth="0">
+
+
+<table border="0" cellpadding="0" cellspacing="0" width="750">
+<tr>
+<td valign=top>
+	<table border=0 cellpadding=2 cellspacing=0 width=749>
+		<tr>
+			<td colspan=3 class="pghdr">
+			<!--- start header --->
+			<CFINCLUDE template="/portalINC/dsp_header.cfm">
+			<!--- end header --->
+			</td>
+		</tr>
+		<tr>
+			<td valign=top>
+				<table border=0 cellpadding=2 cellspacing=0>
+					<tr>
+						<td><img src="/portal/images/spacer.gif" width="130" height="1" border="0" alt=""></td>
+					</tr>
+					<tr>
+						<td valign=top nowrap class="lgnusr"><br>
+						<!--- start nav --->
+						<cfinclude template="/portalINC/admin_nav_classes.cfm">
+						<!--- end nav --->
+						</td>
+					</tr>		
+				</table>		
+			</td>
+
+	<cfif not IsDefined("cookie.uID")>
+		No user currently logged in
+		<cfabort>
+	</cfif>
+
+	<!--- <cfquery datasource="#dopsds#" name="GetSessionID">
+		select   sessionid
+		from     reg
+		where    primarypatronid = #cookie.uID#
+		limit    1
+	</cfquery> --->
+
+	<cfif GetSessionID.recordcount is 0>
+		No session detected for logged in user.
+		<cfabort>
+	</cfif>
+
+	<cfset CurrentSessionID = (primarypatronid)>
+
+	<cfquery datasource="#dopsds#" name="GetNewRegistrations">
+		SELECT   reg.TermID, reg.FacID, reg.ClassID,
+		         reg.PatronID, reg.RegStatus, Patrons.lastname,
+		         reg.Deferred, Patrons.firstname, regstatuscodes.StatusDescription, 
+		         Terms.TermName, reg.RegID, 
+		         Classes.EndDT, reg.QueuedForDrop, 
+		         Classes.Description, Classes.UniqueID AS UniqueClassID, 
+		         classes.startdt, classes.EndDT, reg.DepositOnly, 
+		         classes.leveltypecode, classes.levels, patrons.instrlevela, patrons.instrlevelt
+		FROM     reg reg
+		         INNER JOIN RegHistory ON reg.primarypatronid=reghistory.primarypatronid and reg.RegID=reghistory.RegID
+		         INNER JOIN Patrons ON reg.PatronID=Patrons.PatronID
+		         INNER JOIN regstatuscodes ON reg.RegStatus=regstatuscodes.StatusCode
+		         INNER JOIN Terms ON reg.TermID=Terms.TermID AND reg.FacID=Terms.FacID
+		         INNER JOIN Classes ON reg.TermID=Classes.TermID AND reg.FacID=Classes.FacID AND reg.ClassID=Classes.ClassID
+		         INNER JOIN PATRONRELATIONS ON Reg.PRIMARYPATRONID=PATRONRELATIONS.PRIMARYPATRONID AND Reg.PATRONID=PATRONRELATIONS.SECONDARYPATRONID 
+		WHERE    reg.SessionID = '#CurrentSessionID#'
+		and      reghistory.IsMiscFee = false
+		and      reghistory.voided = false
+		and      ((reg.isstandby = false) or (reg.isstandby = true and reg.relinquishdt is null))
+		ORDER BY reg.TermID, reg.FacID, reg.ClassID, lastname, firstname
+	</cfquery>
+
+
+	<td valign=top class="bodytext" align=left>
+		<table cellpadding="2px" border="0">
+			<TR>
+				<TD align="center" colspan="6"><strong style="font-size: larger;">New Registrations</strong></TD>
+			</TR>
+			<TR>
+				<TD><strong>Term</strong></TD>
+				<TD><strong>Facility</strong></TD>
+				<TD><strong>Class</strong></TD>
+				<TD><strong>Description</strong></TD>
+				<TD><strong>Starts</strong></TD>
+				<TD><strong>Ends</strong></TD>
+				<TD><strong>Patron</strong></TD>
+				<TD><strong>Status</strong></TD>
+				<TD><strong>Op</strong></TD>
+			</TR>
+
+			<cfloop query="GetNewRegistrations">
+				<TR>
+					<TD>#termname#</TD>
+					<TD>#name#</TD>
+					<TD>#classid#</TD>
+					<TD>#description#</TD>
+					<TD>#DateFormat(startdt, "mm/dd/yyyy")#</TD>
+					<TD>#DateFormat(enddt, "mm/dd/yyyy")#</TD>
+					<TD>#lastname#, #firstname#</TD>
+					<TD>#statusdescription#<cfif deferred is 1>(deferred)</cfif></TD>
+					<TD><A href="index.cfm">Remove</A></TD>
+				</TR>
+			</cfloop>
+
+			<cfif GetNewRegistrations.recordcount is 0>
+				<TR>
+					<TD colspan="8">No new registrations at this time</TD>
+				</TR>
+			</cfif>
+
+		</table>
+		<BR>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	<cfquery name="GetFacilities" datasource="#request.reg_dsn#" cachedwithin="#CreateTimeSpan(1,0,0,0)#">
+		select   facid, name
+		from     facilities
+		where    ShowInReg = true
+		and      facid != 'WWW'
+		ORDER BY name
+	</cfquery>
+	
+	<!--- fetch only instructors scheduled for open terms --->
+	<cfquery datasource="#request.reg_dsn#" name="GetInstructors" cachedwithin="#CreateTimeSpan(1,0,0,0)#">
+		SELECT   instructorschedule.instructorid, instructors.firstname || ' ' || instructors.lastname as name
+		FROM     instructorschedule instructorschedule
+		         INNER JOIN locationschedule locationschedule ON instructorschedule.termid=locationschedule.termid AND instructorschedule.facid=locationschedule.facid AND instructorschedule.activity=locationschedule.activity
+		         INNER JOIN instructors instructors ON instructorschedule.instructorid=instructors.instructorid 
+		WHERE    instructorschedule.startdt >= now() 
+		GROUP BY instructorschedule.instructorid, instructors.firstname || ' ' || instructors.lastname
+		ORDER BY instructors.firstname || ' ' || instructors.lastname
+	</cfquery>
+
+	<cfquery datasource="#request.reg_dsn#" name="GetLastTerm" cachedwithin="#CreateTimeSpan(1,0,0,0)#">
+		SELECT   termid
+		FROM     terms
+		WHERE    enddt > now()
+		ORDER BY termid
+		limit 1
+	</cfquery>
+
+	<cfquery datasource="#request.reg_dsn#" name="GetAllAvailTerms" cachedwithin="#CreateTimeSpan(0,1,0,0)#">
+		SELECT   distinct termid, termname
+		FROM     terms
+		WHERE    termid >= '#GetLastTerm.termid#'
+		ORDER BY termid
+		limit 2
+	</cfquery>
+
+	<cfquery name="qGetMessage" datasource="#request.dsn#" cachedwithin="#CreateTimeSpan(0,0,10,0)#">
+		select   m_status, m_message
+		from     th_messages
+		where    m_id = 2
+	</cfquery>
+
+	<cfif qGetMessage.m_status is 2>
+		<TR>
+			<TD colspan="36" align="center"><BR><BR><BR>
+				<cfoutput>#qGetMessage.m_message#</cfoutput><BR><BR><BR><BR><BR><BR><BR>
+				<cfinclude template="#request.includes#/footer.cfm">
+				<cfabort>
+			</TD>
+		</TR>
+	</cfif>
+
+   	<table border=0 cellpadding=2 cellspacing=0 width=749>
+		<tr>
+		<td colspan=4 align="center"><hr color="f58220" width=80% align="center"></td>
+		</tr>
+		<tr>
+		<td class="pghdr" colspan=4>Quick Search by Class Number</td>
+		</tr>
+		<tr>
+		<td valign=top colspan=4 class="bodytext" align=left> 
+		<!--- looks for content - displays check back msg if current content not available --->
+			<cfform action="queryclasses.cfm" method="POST" preservedata="Yes" name="f" enablecab="Yes" scriptsrc="#request.webdir#/scripts/cfform.js">
+			<cfset QueryMode = 1>
+			<TABLE WIDTH="700" border=0 cellpadding="1" cellspacing="0">
+			<tr>
+			<td colspan=4><!--- <input type="text" size="27" name="keywords" class="form_input" style="width: 500px"> --->
+			<input name="offset" type="Hidden" value="0">
+			<textarea name="classlist" wrap="virtual" style="width: 730px;" rows="3"></textarea>
+			<BR>
+			Enter class(es) to search for in term:
+
+			<select name="SelectSearchTermClassMode"  class="form_input">
+				<cfoutput>
+				<cfloop query="GetAllAvailTerms">
+					<option value="#termid#" <cfif IsDefined("SelectSearchTermClassMode") and termid is SelectSearchTermClassMode>selected</cfif>>#TermName#
+				</cfloop>
+				</cfoutput>
+			</select>
+
+			<input type="submit" name="getclasses" value="Find Class By Number" class="form_submit">
+			</td>
+
+			</tr>
+			<tr>
+			<td colspan=4 align="center"><hr color="f58220" width=80% align="center"></td>
+			</tr>
+			<tr>
+			<td class="pghdr" colspan=3>Detailed Activities/Class Search</td>
+			</tr>		
+			<TR>
+			<TD colspan="4" valign="top">
+			<strong>Keywords</strong>&nbsp;&nbsp;&nbsp;&nbsp;
+			<CFINPUT TYPE="radio" NAME="SearchMode" value="All" passthrough="checked">All Words&nbsp;&nbsp;
+			<CFINPUT TYPE="radio" NAME="SearchMode" value="any">Any Word&nbsp;
+			<CFINPUT TYPE="radio" NAME="SearchMode" value="phrase">Phrase&nbsp;&nbsp;&nbsp;&nbsp;
+			<BR>
+			<INPUT TYPE="text" NAME="keywords" class="form_input" style="width: 730px"><br>
+			</td>
+			</TD>
+			</TR>
+			<TR>
+			<TD width="200" valign="top" nowrap>
+
+			<BR><strong>Select term</strong><BR>
+
+			<select name="SelectSearchTerm"  class="form_input">
+
+				<cfloop query="GetAllAvailTerms">
+					<cfoutput><option value="#termid#" <cfif IsDefined("SelectSearchTerm") and termid is SelectSearchTerm>selected</cfif>>#TermName#</cfoutput>
+				</cfloop>
+
+			</select>
+			<BR><BR>
+
+			<strong>Search By Facility</strong> (select all that apply)<br>
+			<select name="SelectFacility" size="9" multiple>
+
+				<cfloop query="GetFacilities">
+					<cfoutput><option value="'#facid#'">#name#</cfoutput>
+				</cfloop>
+
+			</SELECT><BR>
+			<cfif IsDefined("IncludeInstructor")><cfset t2 = "checked"><cfelse><cfset t2 = ""></cfif>
+			<br><!--- <input #t2# type="Checkbox" name="IncludeInstructor"> ---><strong>Search by Instructors</strong><br>
+			<!--- <CFSELECT value="InstructorID" NAME="SelectInstructor" size="1" query="GetInstructors" display="" passthrough="tabindex=207 "></CFSELECT> --->
+
+			<select NAME="SelectInstructor" class="form_input">
+				<option value="">--- All Instructors ---
+
+				<cfloop query="GetInstructors">
+					<cfoutput><option value="#InstructorID#">#name#</cfoutput>
+				</cfloop>
+
+			</select>
+
+			</TD>
+			<TD valign="top" width="0%" class="bodytext" nowrap><br><strong>Search By Day</strong><br>
+			<cfinput type="checkbox" name="CBSun">Sunday<BR>
+			<cfinput type="checkbox" name="CBMon">Monday<BR>
+			<cfinput type="checkbox" name="CBTue">Tuesday<BR>
+			<cfinput type="checkbox" name="CBWed">Wednesday<BR>
+			<cfinput type="checkbox" name="CBThu">Thursday<BR>
+			<cfinput type="checkbox" name="CBFri">Friday<BR>
+			<cfinput type="checkbox" name="CBSat">Saturday<br>
+			<cfinput type="Radio" name="WeekdayInclusion" value="Any" passthrough="checked">Any
+			<cfinput type="Radio" name="WeekdayInclusion" value="All">All<BR>
+			<br>
+			<strong>Search By Time of Day</strong><br>
+			<input type="checkbox" name="tod" value="0|11">&nbsp;Morning (6am-12pm)<BR>
+			<input type="checkbox" name="tod" value="12|17">&nbsp;Afternoon (12pm-6pm)<br>
+			<input type="checkbox" name="tod" value="18|24">&nbsp;Evening (After 6pm)
+			</TD>
+
+			<!--- if number of input selects are changed also change the query builder to account for the change --->
+			<TD valign="top" nowrap width="0"><br><strong>Search By Age For</strong>&nbsp;&nbsp;&nbsp;&nbsp;
+			
+			<br>
+
+			<cfquery datasource="#dopsds#" name="GetDOB">
+				select   secondarypatronid, patrons.firstname, patrons.dob
+				from     patronrelations
+				         inner join patrons on secondarypatronid=patrons.patronid
+				where    primarypatronid = #cookie.uID#
+				order by relationtype, secondarypatronid
+			</cfquery>
+
+			<cfloop query="GetDOB">
+				<input name="IncludeDOB" value="#dateformat(dob, "yyyymmdd")#" type="Checkbox">#firstname#<BR>
+			</cfloop>
+
+			</TD>
+
+			<TD valign="top"><BR>
+			<strong>Sort Results by:</strong><BR>
+			<CFINPUT TYPE="radio" NAME="ViewOrder" value="ID" passthrough="checked">Class Number<BR>
+			<CFINPUT TYPE="radio" NAME="ViewOrder" value="desc">Class Name<BR><BR>
+			<input name="notstarted" type="Checkbox">Not already started<BR><BR>
+			<input type="submit" name="getclasses" value="Search For Classes" class="form_submit">
+			</TD>
+			</TR>
+			<tr>
+			</tr>			
+			</TABLE>
+			</cfform>			
+		 </td>
+
+
+
+
+
+
+
+
+
+
+
+<cfinclude template="/portalINC/footer.cfm">
+</table>
+
+<CFINCLUDE template="/portalINC/googleanalytics.cfm">
+
+
+
+
+
+<cfabort>
+
+<!--- old code --->
+			<!--- looks for content - displays check back msg if current content not available --->
+			<cfform action="queryclasses.cfm" method="POST" preservedata="Yes" name="f" enablecab="Yes" scriptsrc="/scripts/cfform.js">
+			<cfset QueryMode = 1>
+			<TABLE WIDTH="625" border=0 cellpadding="1" cellspacing="0">
+			<tr>
+			<td colspan=2><br><span class="pghdr">Quick Search by Class Number</span><br>Leave a space between each entry. <em>Example: AC22101 AC22103 AC22106</em><br><img src="#request.imagedir#/spacer.gif" width="1" height="5" border="0" alt=""><br><input type=text size="40" name="keywords" class="form_input" style="width: 200px">&nbsp;&nbsp;<input type="submit" name="getclasses" value="Find Class By Number" class="form_submit"><br></td>
+			<td class="bodytext" valign=top align="center" nowrap><a href="categories.cfm"><strong>Search by Category</strong></a>&nbsp;&nbsp;|&nbsp;&nbsp;<A HREF="javascript:void(window.open('help.cfm?c=1','','width=518,height=355,statusbar=0,scrollbars=1,resizable=0'))"><strong>Registration Help</strong></A></td>
+			</tr>
+			<tr>
+				<td colspan=3 align="center"><hr color="f58220" width=90% align="center" style="margin-top:15px;margin-bottom:15px"></td>
+			</tr>
+			
+			<tr>
+			<td class="pghdr" colspan=3>Detailed Activities/Class Search</td>
+			</tr>		
+			<TR>
+			<TD colspan="3" valign="top">
+			<strong>Keywords</strong>&nbsp;&nbsp;&nbsp;&nbsp;
+			<CFINPUT TYPE="radio" NAME="SearchMode" tabindex="201" value="All" passthrough="checked">All Words&nbsp;&nbsp;
+			<CFINPUT TYPE="radio" NAME="SearchMode" tabindex="202" value="any">Any Word&nbsp;
+			<CFINPUT TYPE="radio" NAME="SearchMode" tabindex="203" value="phrase">Phrase&nbsp;&nbsp;&nbsp;&nbsp;
+			<BR>
+			<INPUT TYPE="text" NAME="keywords" class="form_input" size=30 style="width: 325px"><br>
+			&nbsp;&nbsp;<input type="Checkbox" name="IgnoreClassExpiration"><strong>Include Past Classes?</strong>
+			<!--- <strong>Maximum matches</strong>&nbsp;&nbsp;
+			<select name="MaxClassQueryRecords" class="form_input">
+			<option>10</option>
+			<option>25</option>
+			<option>50</option>
+			<option>100</option>
+			</select>&nbsp;&nbsp; --->
+			</td>
+			</TD>
+			</TR>
+			<TR>
+			<TD width="300" valign="top" nowrap><br>
+
+			<strong>Search By Facility</strong><br>
+			<cfselect name="SelectFacility" size="4" multiple message="Select all facilities you wish" query="application.GetFacilities" value="FacID" display="name" passthrough="tabindex=206 class=form_input"></CFSELECT><BR>
+			<cfif IsDefined("IncludeInstructor")><cfset t2 = "checked"><cfelse><cfset t2 = ""></cfif>
+			<br><input #t2# type="Checkbox" name="IncludeInstructor"><strong>Include Instructor From List?</strong><br>
+			<CFSELECT value="InstructorID" NAME="SelectInstructor" size="1" query="application.GetInstructors" display="name" passthrough="tabindex=207 class=form_input"></CFSELECT>
+			<br>
+			<br>
+			<cfquery datasource="#request.reg_dsn#" name="GetLastTerm">
+				SELECT   termid
+				FROM     terms
+				WHERE    enddt > now()
+				ORDER BY termid
+				limit 1
+			</cfquery>
+
+			<cfquery datasource="#request.reg_dsn#" name="GetAllAvailTerms">
+				SELECT   distinct termid, termname, startdt, enddt
+				FROM     terms
+				WHERE    enddt > now() AND startdt + '-40 days' < now()
+				and termid <> '0601'
+				ORDER BY termid desc
+			</cfquery>
+			<strong>Search by class term</strong><BR>
+			<cfloop query="GetAllAvailTerms">
+			<CFIF datecompare(now(),enddt) LT 0 AND datecompare(now(),startdt) GT 0>
+				<cfset theSel = true>
+			<CFELSE>
+				<cfset theSel = false>
+			</CFIF>
+			
+			<input type="checkbox" name="SelectSearchTerm" value="#termid#" <cfif IsDefined("SelectSearchTerm") and termid is SelectSearchTerm>checked</cfif>>#TermName#<br>
+			</cfloop><BR>
+			</TD>
+			
+			
+			
+			
+			
+			<TD valign="top" width="20%" class="bodytext"><br><strong>Search By Day</strong><br>
+			<cfinput type="checkbox" name="CBSun" tabindex="231">Sunday<BR>
+			<cfinput type="checkbox" name="CBMon" tabindex="232">Monday<BR>
+			<cfinput type="checkbox" name="CBTue" tabindex="233">Tuesday<BR>
+			<cfinput type="checkbox" name="CBWed" tabindex="234">Wednesday<BR>
+			<cfinput type="checkbox" name="CBThu" tabindex="235">Thursday<BR>
+			<cfinput type="checkbox" name="CBFri" tabindex="236">Friday<BR>
+			<cfinput type="checkbox" name="CBSat" tabindex="237">Saturday<br>
+			<cfinput type="Radio" tabindex="238" name="WeekdayInclusion" value="Any" passthrough="checked">Any
+			<cfinput type="Radio" tabindex="238" name="WeekdayInclusion" value="All">All<BR>
+			</TD>
+			
+			<!--- if number of input selects are changed also change the query builder to account for the change --->
+			<TD valign="top" nowrap><br><strong>Search By Age</strong><br>
+			<input type="radio" name="agesearch" value="all" checked>&nbsp;All Ages
+			<br><input type="radio" name="agesearch" value="ym">&nbsp;Individual Ages<br>
+			&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<strong>Patron 1</strong><br>
+			&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Years / Months&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+			<select name="SelectYears1" class="form_input" onclick="document.QueryClasses.agesearch[1].checked = true;">
+					<cfloop from="0" to="99" step="1" index="q">
+						<option value="#q#">#q#
+					</cfloop>
+				</select>&nbsp;/&nbsp;
+				<select name="SelectMonths1" class="form_input" onclick="document.QueryClasses.agesearch[1].checked = true;">
+					<cfloop from="0" to="12" step="1" index="q">
+						<option value="#q#">#q#
+					</cfloop>
+				</select>
+			<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<strong>Patron 2</strong><br>
+			&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Years / Months&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+				<select name="SelectYears2" class="form_input" onclick="document.QueryClasses.agesearch[1].checked = true;">
+					<cfloop from="0" to="99" step="1" index="q">
+						<option value="#q#">#q#
+					</cfloop>
+				</select>&nbsp;/&nbsp;
+				<select name="SelectMonths2" class="form_input" onclick="document.QueryClasses.agesearch[1].checked = true;">
+					<cfloop from="0" to="12" step="1" index="q">
+						<option value="#q#">#q#
+					</cfloop>
+				</select>
+			<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<strong>Patron 3</strong><br>
+			&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Years / Months&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+				<select name="SelectYears3" class="form_input" onclick="document.QueryClasses.agesearch[1].checked = true;">
+					<cfloop from="0" to="99" step="1" index="q">
+						<option value="#q#">#q#
+					</cfloop>
+				</select>&nbsp;/&nbsp;
+				<select name="SelectMonths3" class="form_input" onclick="document.QueryClasses.agesearch[1].checked = true;">
+					<cfloop from="0" to="12" step="1" index="q">
+						<option value="#q#">#q#
+					</cfloop>
+				</select>
+				<br>
+				<!--- <input type="radio" name="agesearch" value="dob">&nbsp;DOB&nbsp;<span style="font-size: smaller;">(mm/dd/yyyy)</span>&nbsp;&nbsp;<cfinput type="Text" validate="date" name="TextDOB1" size="8" passthrough="tabindex=216 class=form_input" style="width: 70px;" message="Improper date format for date 1. Use the format of MM/DD/YYYY."> --->
+				</TD>
+			</TR>
+			
+			<tr>
+				<td><br><strong>Search By Time of Day</strong><br>
+			<input type="checkbox" name="tod" value="0|12">&nbsp;Morning (6am-12pm)&nbsp;&nbsp;<input type="checkbox" name="tod" value="12|18">&nbsp;Afternoon (12pm-6pm)<br>
+			<input type="checkbox" name="tod" value="18|24">&nbsp;Evening (After 6pm)
+				</td>
+				<td colspan="2">
+				<br><strong>Search by Class Start & End Dates</strong><br>
+				<table>
+					<tr>
+						<td>Start: </td>
+						<td><select name="startm1" class="form_input">
+					<option value=""></option>
+					<option value="01">Jan</option>
+					<option value="02">Feb</option>
+					<option value="03">Mar</option>
+					<option value="04">Apr</option>
+					<option value="05">May</option>
+					<option value="06">Jun</option>
+					<option value="07">Jul</option>
+					<option value="08">Aug</option>
+					<option value="09">Sep</option>
+					<option value="10">Oct</option>
+					<option value="11">Nov</option>
+					<option value="12">Dec</option>
+				</select>
+				<select name="startd1" class="form_input">
+					<option value=""></option>
+					<CFLOOP from="1" to="31" index="i"><option value="#i#">#i#</option></CFLOOP>
+				</select>
+				<select name="starty1" class="form_input">
+					<option value=""></option>
+					<option value="#year(now())#">#year(now())#</option>
+					<option value="#year(now())+1#">#year(now())+1#</option>
+				</select><br></td>
+					</tr>
+					<tr>
+						<td>End:</td>
+						<td><select name="startm2" class="form_input">
+					<option value=""></option>
+					<option value="01">Jan</option>
+					<option value="02">Feb</option>
+					<option value="03">Mar</option>
+					<option value="04">Apr</option>
+					<option value="05">May</option>
+					<option value="06">Jun</option>
+					<option value="07">Jul</option>
+					<option value="08">Aug</option>
+					<option value="09">Sep</option>
+					<option value="10">Oct</option>
+					<option value="11">Nov</option>
+					<option value="12">Dec</option>
+				</select>
+				<select name="startd2" class="form_input">
+					<option value=""></option>
+					<CFLOOP from="1" to="31" index="i"><option value="#i#">#i#</option></CFLOOP>
+				</select>
+				<select name="starty2" class="form_input">
+					<option value=""></option>
+					<option value="#year(now())#">#year(now())#</option>
+					<option value="#year(now())+1#">#year(now())+1#</option>
+				</select></td>
+					</tr>
+				</table>
+				</TD>
+			</tr>
+			
+			<tr>
+			<td colspan=3><br>
+			<strong>Sort Results by:</strong> <CFINPUT TYPE="radio" NAME="ViewOrder" tabindex="204" value="ID" passthrough="checked">Class Number&nbsp;&nbsp;
+			<CFINPUT TYPE="radio" NAME="ViewOrder" tabindex="205" value="desc">Class Name<BR>
+
+			<input type="submit" name="getclasses" value="Search For Classes" class="form_submit" tabindex="299">&nbsp;&nbsp;<cfif isdefined('session.class_struct')><input type="submit" name="getclasses" value="Retrieve Last Search" class="form_submit" tabindex="299"></cfif>
+			<cfif isdefined('session.classlist')>
+				<cfif listlen(session.classlist) gt 0>
+				<input type="button" name="checkout" value="Complete Registration" class="form_submit" tabindex="299" onClick="window.location='classbasket.cfm';">
+				</cfif>
+			</cfif>
+			</td>
+			</tr>			
+			</TABLE>
+			</cfform>	
+			<!--- END CLASS CONTENT --->
+					</td>
+				</tr>
+			</table>
+		</td>
+    </tr>
+	<tr>
+		<td colspan="3"><img src="#request.imagedir#/spacer.gif" width="1" height="11" border="0" alt=""></td>
+	</tr>
+<cfinclude template="/portalINC/footer.cfm">
+</table>
+</cfoutput>
+<CFINCLUDE template="/portalINC/googleanalytics.cfm">
+
+<cfif IsDefined("ShowTC")>
+	<BR>TC: <cfoutput>#GetTickCount() - tc#</cfoutput>
+</cfif>
+
+</body>
+</html>

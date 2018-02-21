@@ -1,0 +1,70 @@
+<cfoutput>
+<cfif listlen('#session.classlist#') is 0>
+	<cfset session.classlist = "''">
+</cfif>
+<cfinclude template="queryclassesfinal.cfm">
+
+<html>
+<head>
+	<title>Class Search / Registration Help</title>
+	<!--- <CFINCLUDE TEMPLATE="/Thirst/Header.cfm"> --->
+</head>
+<body topmargin="0" leftmargin="0" marginheight="0">
+<TABLE WIDTH="630" cellpadding=1 cellspacing=0 border=0>
+<tr bgcolor="0048d0">
+<td align=center style="color:white;" class="bodytext" colspan=4><strong>My Selected Classes</strong></td>
+</tr>
+<tr>
+<td colspan="4" align="right"><img src="../photos/print.gif" border="0" onMouseup="javascript:window.print();" alt="Print Search Help">&nbsp;<img src="../photos/close.gif" border="0" onMouseup="javascript:window.close();" alt="Close Window"></td>
+</tr>
+<tr>
+<td>&nbsp;&nbsp;</td>
+<td class="bodytext" nowrap><strong>Class Name / ID</strong></td>
+<td class="bodytext" nowrap><strong>Location</strong></td>
+<td class="bodytext" nowrap><strong>Dates and Times</strong></td>
+</tr>
+
+<cfloop query="queryClasses">
+<cfquery datasource="#request.reg_dsn#" name="GetFacilityData">
+	select name, scmonths
+	from facilities
+	where facid = '#facid#'
+</cfquery>
+<cfset daylist = "">
+	<cfif QueryClasses.SunCount gt 0>
+		<cfset daylist = listappend(daylist,'Su')>
+	</cfif>
+	<cfif QueryClasses.MonCount gt 0>
+		<cfset daylist = listappend(daylist,'M')>
+	</cfif>
+	<cfif QueryClasses.TueCount gt 0>
+		<cfset daylist = listappend(daylist,'Tu')>
+	</cfif>
+	<cfif QueryClasses.WedCount gt 0>
+		<cfset daylist = listappend(daylist,'W')>
+	</cfif>
+	<cfif QueryClasses.ThuCount gt 0>
+		<cfset daylist = listappend(daylist,'Th')>
+	</cfif>
+	<cfif QueryClasses.FriCount gt 0>
+		<cfset daylist = listappend(daylist,'F')>
+	</cfif>
+	<cfif QueryClasses.SatCount gt 0>
+		<cfset daylist = listappend(daylist,'Sa')>
+	</cfif>
+
+<tr>
+<td>&nbsp;&nbsp;</td>
+<td class="bodytext" nowrap>#description#&nbsp;&nbsp;(#classID#)&nbsp;&nbsp;</td>
+<td class="bodytext" nowrap>#GetFacilityData.name#&nbsp;&nbsp;&nbsp;&nbsp;</td>
+<td class="bodytext" nowrap width=45%>#DateFormat(StartDT,"mm/dd/yy")#<cfif DateFormat(StartDT,"mmmm d, yyyy") is not DateFormat(EndDT,"mmmm d, yyyy")> - #DateFormat(EndDT,"mm/dd/yy")#</cfif>&nbsp;&nbsp;&nbsp;#TimeFormat(StartDT,"h:mmtt")# to #TimeFormat(EndDT,"h:mmtt")#
+- (#daylist#)
+</td>
+</tr>
+</cfloop>
+
+</TABLE>
+</cfoutput>
+<CFINCLUDE template="/portalINC/googleanalytics.cfm">
+</body>
+</html>

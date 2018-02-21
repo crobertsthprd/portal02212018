@@ -1,0 +1,161 @@
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/thprd/!svn/ver/22/trunk/webroot/secure/portal/includes
+END
+addressfinder.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/svn/thprd/!svn/ver/14/trunk/webroot/secure/portal/includes/addressfinder.cfm
+END
+admin_nav_history.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/admin_nav_history.cfm
+END
+insession_function.cfmOLD
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/insession_function.cfmOLD
+END
+invoice_functions.cfmOLD
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/invoice_functions.cfmOLD
+END
+admin_nav_login.html
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/admin_nav_login.html
+END
+googleanalytics.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/thprd/!svn/ver/18/trunk/webroot/secure/portal/includes/googleanalytics.cfm
+END
+admin_nav_login.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/admin_nav_login.cfm
+END
+footer_login.html
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/footer_login.html
+END
+familyassistance_functions.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/familyassistance_functions.cfm
+END
+footer_basket.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/footer_basket.cfm
+END
+portaldown.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/portaldown.cfm
+END
+webbuyothercredit.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/thprd/!svn/ver/22/trunk/webroot/secure/portal/includes/webbuyothercredit.cfm
+END
+admin_nav.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/admin_nav.cfm
+END
+footer.html
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/footer.html
+END
+footer.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/footer.cfm
+END
+dsp_header.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/dsp_header.cfm
+END
+functions.cfc
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/thprd/!svn/ver/38/trunk/webroot/secure/portal/includes/functions.cfc
+END
+portalstatus_to_off.inc
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/portalstatus_to_off.inc
+END
+checkwebcontent.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/checkwebcontent.cfm
+END
+faq.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/faq.cfm
+END
+portalstatus_to_on.inc
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/portalstatus_to_on.inc
+END
+checkcontent.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/checkcontent.cfm
+END
+admin_nav_classes.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/admin_nav_classes.cfm
+END
+PrintInvoice.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/PrintInvoice.cfm
+END
+MailGCInvoice.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/MailGCInvoice.cfm
+END
+portalstatus.inc
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/includes/portalstatus.inc
+END

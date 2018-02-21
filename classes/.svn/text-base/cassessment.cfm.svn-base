@@ -1,0 +1,96 @@
+<cfquery name="GetClassData" datasource="#request.reg_dsn#">
+ select   classes.*, terms.*
+ from     classes, terms
+ where    classes.termid=terms.termid
+ and classes.facid=terms.facid
+ and      classes.uniqueID = #cID#
+</cfquery>
+
+<html>
+<head>
+	<title>View Assessments</title>
+	<!--- <CFINCLUDE TEMPLATE="/Thirst/Header.cfm"> --->
+</head>
+
+<body topmargin="0" leftmargin="0" marginheight="0">
+<TABLE WIDTH="100%" cellpadding=1 cellspacing=0 align="center">
+<tr bgcolor="0048d0">
+<td align=center style="color:white;" class="bodytext" colspan=2><strong>Assessments</strong></td>
+</tr>
+<tr>
+<td colspan="2" align="right"><img src="/webimages/print.gif" border="0" onMouseup="javascript:window.print();" alt="Print Search Help">&nbsp;<img src="/webimages/close.gif" border="0" onMouseup="javascript:window.close();" alt="Close Window"></td>
+</tr>
+<TR>
+<td>&nbsp;&nbsp;</td>
+<TD class="bodytext">
+<cfoutput query="getClassData"> <strong>#description# / #classID#</strong>&nbsp;&nbsp;-&nbsp;&nbsp;#TermName#</cfoutput><br><br>
+<strong>This class requires one of the following assessments:</strong><BR><BR>
+<cfif GetClassData.startdt is "">
+	Cannot determine assessment(s)<br>
+<cfelseif GetClassData.assmtexempt IS 1>
+	Class is exempt. No assessments are required.<br>
+<cfelse>
+ 	<cfquery datasource="#request.reg_dsn#" name="GetReqAssmt1">
+      select *
+      from assessmentrates
+      where #CreateODBCDate(GetClassData.startdt)# between assmteffective - grace::integer and assmtexpires + grace::integer
+	  and isannual is false
+	  <!--- and --->
+	  
+      order by assmteffective desc
+      limit 1
+     </cfquery>
+	 
+	  <cfquery datasource="#request.reg_dsn#" name="GetReqAssmt2">
+      select *
+      from assessmentrates
+      where #CreateODBCDate(GetClassData.enddt)# between assmteffective - grace::integer and assmtexpires + grace::integer
+	  and isannual is false
+	  <!--- and --->
+	  
+      order by assmteffective asc
+      limit 1
+     </cfquery>
+	 
+	 <CFIF GetReqAssmt1.id EQ GetReqAssmt2.id>
+	 	<!--- one quarter --->
+		<li><CFOUTPUT>#getReqAssmt1.name# Quarterly</CFOUTPUT></li>
+	 <CFELSE>
+	 	<!--- two or more quarters --->
+		<CFQUERY name="GetReqAssmt3" datasource="#request.reg_dsn#">
+			select * from assessmentrates
+			where assmteffective >= #GetReqAssmt1.assmteffective# and assmtexpires <= #getReqAssmt2.assmtexpires#
+			and isannual is false
+		</CFQUERY>
+		<li><CFOUTPUT query="getReqAssmt3">#name# Quarterly <CFIF getReqAssmt3.currentrow NEQ getReqAssmt3.recordcount><u>AND</u></CFIF></li> </CFOUTPUT>
+	 </CFIF>
+	 
+	 <!--- get annuals --->
+	  <cfquery datasource="#request.reg_dsn#" name="GetReqAssmtAnnuals">
+      select *
+      from assessmentrates
+      where #CreateODBCDate(GetClassData.startdt)# between assmteffective - grace::integer and assmtexpires + grace::integer
+	  and #CreateODBCDate(GetClassData.enddt)# between assmteffective - grace::integer and assmtexpires + grace::integer
+	  and isannual is true
+	  order by assmteffective asc
+     </cfquery>
+	<br>
+	<CFOUTPUT query="GetReqAssmtAnnuals">
+	<li>#name#</li>
+	</CFOUTPUT>
+
+
+</cfif>
+
+ 
+<BR>
+<!---
+<strong>ID</strong> - In-District Prices<br>
+<strong>OD</strong> - Out of District Prices
+--->
+</TD>
+</TR>
+
+</TABLE>
+</body>
+</html>

@@ -1,0 +1,538 @@
+<cfif not IsDefined("enrollmentpairs")>
+	No enrollment data found
+	<cfabort>
+</cfif>
+
+<cfset primarypatronid = cookie.uID>
+<cfset CurrentSessionID = GetSessionid(primarypatronid)>
+
+<cfif CurrentSessionID is "">
+	No session detected for logged in user. This can be due to THPRD staff taking control of this session. If this is not the case, try clicking <strong>Class Search</strong> again.
+	<cfabort>
+</cfif>
+
+<!--- set to 1 if to use new code (1 or 0)--->
+
+<cfif UseNewCodeMethod is 1>
+	<cfif IsDefined("cookie.uID")>
+		<cfquery datasource="#dopsds#" name="UpdateSessionDT">
+			update   sessionpatrons
+			set lastactivitydt = now()
+			where    primarypatronid = <CFQUERYPARAM cfsqltype="cf_sql_integer" value="#cookie.uID#">
+		</cfquery>
+	</cfif>
+</cfif>
+
+<!--- toggle for allowing Wl to be created --->
+<cfset AllowWL = 1>
+<cfset localfac = "WWW">
+<cfset localnode = "W1">
+<cfset EWPRelinquishEmail = 0>
+<cfset huserid = 0>
+
+<cfif cookie.ds is 'Out of District'>
+	<cfset PrimaryPatronInDistrict = 0>
+<cfelse>
+	<cfset PrimaryPatronInDistrict = 1>
+</cfif>
+
+<!--- <cfinclude template="reg_functions.cfm"> --->
+
+<cfif not IsDefined("GetPatrons")>
+	<cfquery datasource="#dopsds#ro" name="GetPatrons">
+		select   secondarypatronid, patrons.lastname, patrons.firstname, patrons.dob, relationtype
+		from     patronrelations
+		         inner join patrons on secondarypatronid=patrons.patronid
+		where    primarypatronid = #cookie.uID#
+		order by patrons.firstname
+	</cfquery>
+</cfif>
+
+<cftransaction action="BEGIN" isolation="READ_COMMITTED">
+
+<CFQUERY name="createlock" datasource="#dopsds#">
+		SELECT   uniqueid
+		FROM     dops.classes
+		WHERE    uniqueid in (#enrollmentlist#)
+		for      update
+</CFQUERY>
+
+<!---<cfif SystemLock() is 1></cfif>--->
+
+	<!--- use array enrollmentpairs  1: class uniqueid  2: patronid--->
+	<cfloop from="1" to="#ArrayLen(enrollmentpairs)#" step="1" index="q">
+		<cfset thispatrondob = "">
+		<cfset patronid = 0>
+
+		<cfloop query="GetPatrons">
+
+			<cfif secondarypatronid is enrollmentpairs[q][2]>
+				<cfset thispatrondob = dob>
+				<cfset patronid = secondarypatronid>
+				<cfbreak>
+			</cfif>
+
+		</cfloop>
+
+		<cfif patronid gt 0>
+			<!--- get class data --->
+			<cfquery datasource="#dopsds#" name="GetClassData">
+				select   uniqueid, termid, facid, classid, maxqty, startdt, enddt, BusinessCenterID, 
+				         indistregfee, outdistregfee, indistsenfee, outdistsenfee, miscfee, iddeposit, oddeposit,
+				         finalpaymentdue, scmonths, regcount, wlcount, ewpcount, 0 as senior
+				from     ClassesView
+				where    uniqueid = #enrollmentpairs[q][1]#
+				and      
+	
+				(select  coalesce(count(*))
+				from     reg
+				where    primarypatronid = #primarypatronid#
+				and      patronid = #enrollmentpairs[q][2]#
+				and      termid = classesview.termid
+				and      facid = classesview.facid
+				and      classid = classesview.classid
+				and      reg.regstatus in ('E', 'A', 'R', 'W', 'H')) = 0
+			</cfquery>
+	
+			<cfif GetClassData.recordcount is 1>
+	
+				<cfif DateAdd("m", (-1 * GetClassData.scmonths), GetClassData.startdt) gt thispatrondob>
+					<cfset QuerySetCell(GetClassData, "senior", 1)>
+				</cfif>
+	
+				<cfset classcost = GetRate("R", GetClassData.indistregfee, GetClassData.indistsenfee, GetClassData.outdistregfee, GetClassData.outdistsenfee, PrimaryPatronID, thisPatronDOB, GetClassData.facid, GetClassData.BusinessCenterID, 1, GetClassData.Startdt, GetClassData.Enddt)>
+		
+				<cfif PrimaryPatronInDistrict is 1>
+					<cfset depositrequired = GetClassData.iddeposit>
+				<cfelse>
+					<cfset depositrequired = GetClassData.oddeposit>
+				</cfif>
+		
+				<cfif depositrequired is 0>
+					<cfset AllowDeposit = 0>
+				<cfelse>
+					<cfset AllowDeposit = 1>
+				</cfif>
+		
+				<cfif now() gt GetClassData.finalpaymentdue>
+					<cfset AllowDeposit = 0>
+				</cfif>
+
+				<cfif AllowDeposit is 0>
+					<cfset depositrequired = 0>
+				</cfif>
+		
+				<cfif GetClassData.recordCount is not 1>
+					<BR><BR>Error in determining unique class. Try searching again.
+					<cfabort>
+				</cfif>
+		
+				<cfset WaitListCount = val(GetClassData.wlcount)>
+				<cfset patronid = enrollmentpairs[q][2]>
+
+				<!--- get registrations flagged as GetWaitListCount --->
+				<cfquery datasource="#dopsds#" name="GetWaitListCount">
+					select  coalesce(count(*),0) as GetWaitListCount
+					from    Reg
+					where   TermID = '#GetClassData.TermID#'
+					and     FacID = '#GetClassData.FacID#'
+					and     ClassID = '#GetClassData.ClassID#'
+					and     RegStatus = 'W'
+				</cfquery>
+		
+				<!--- pass 1 checks for any standby registrations and deletes if needed --->
+				<!--- pass 2 loads data and continues to normal registration--->
+				<cfloop from="1" to="2" step="1" index="z">
+					<!--- get class allocated --->
+					<cfquery datasource="#dopsds#" name="GetClassAllocated">
+						SELECT   coalesce(count(*),0) AS Allocated 
+						FROM     REG REG
+						WHERE    REG.TERMID = '#GetClassData.TermID#'
+						AND      REG.FACID = '#GetClassData.FacID#'
+						AND      REG.CLASSID = '#GetClassData.ClassID#'
+						AND      REG.REGSTATUS in ('E','W','A','R','H') 
+					</cfquery>
+		
+					<cfif z is 2>
+						<cfbreak>
+		
+					<cfelse><!--- if AdjustmentReasonCode is not EWPAdjustCode --->
+						<!--- relinquish newest registration, if needed --->
+						<cfquery datasource="#dopsds#" name="GetLastStandbyRegAllocated">
+							SELECT   REG.PRIMARYPATRONID, REG.REGID, reg.patronid, FACILITIES.NAME,
+							         PATRONS.LASTNAME, PATRONS.FIRSTNAME, reg.indistrict
+							FROM     REG REG
+							         INNER JOIN REGHISTORY REGHISTORY ON REG.PRIMARYPATRONID=REGHISTORY.PRIMARYPATRONID AND REG.REGID=REGHISTORY.REGID
+							         INNER JOIN FACILITIES FACILITIES ON REG.FACID=FACILITIES.FACID
+							         INNER JOIN PATRONS PATRONS ON REG.PATRONID=PATRONS.PATRONID 
+							         INNER JOIN CLASSES CLASSES ON REG.TERMID=CLASSES.TERMID AND REG.FACID=CLASSES.FACID AND REG.CLASSID=CLASSES.CLASSID
+							WHERE    REG.TERMID = '#GetClassData.TermID#' 
+							AND      REG.FACID = '#GetClassData.FacID#' 
+							AND      REG.CLASSID = '#GetClassData.ClassID#' 
+							AND      REG.REGSTATUS = 'E' 
+							AND      REG.ISSTANDBY = true 
+							AND      REG.RELINQUISHDT is NULL 
+							AND      CLASSES.STARTDT > now()
+							ORDER BY REGHISTORY.DT DESC
+							limit    1
+						</cfquery>
+		
+
+
+
+						<cfif GetLastStandbyRegAllocated.recordcount is 1 and (GetClassAllocated.Allocated gte GetClassData.maxqty or GetWaitListCount.GetWaitListCount gt 0)>
+
+							<!--- relinquish registration --->
+							<cfquery datasource="#dopsds#" name="CheckForInvoiced">
+								SELECT   REGHISTORY.INVOICENUMBER 
+								FROM     REG 
+								         INNER JOIN REGHISTORY REGHISTORY ON REG.PRIMARYPATRONID=REGHISTORY.PRIMARYPATRONID AND REG.REGID=REGHISTORY.REGID
+								WHERE    REG.PRIMARYPATRONID = #GetLastStandbyRegAllocated.PRIMARYPATRONID#
+								AND      REG.REGID = #GetLastStandbyRegAllocated.REGID#
+							</cfquery>
+		
+							<cfquery datasource="#dopsds#" name="InsertRegHistory">
+								select dops.insertregproc(#GetLastStandbyRegAllocated.PRIMARYPATRONID#, #GetLastStandbyRegAllocated.REGID#, 'R', 0, 'W1')
+							</cfquery>
+
+							<cfif CheckForInvoiced.INVOICENUMBER is "">
+								<!--- drop non-invoiced class --->
+								<cfquery datasource="#dopsds#" name="GetAdjToDelete">
+									select   EC
+									from     reghistory
+									where    RegID = #GetLastStandbyRegAllocated.RegID#
+									and      primarypatronid = #GetLastStandbyRegAllocated.PrimaryPatronID#
+									and      action = 'E'
+									and      finished = false
+								</cfquery>
+
+								<cfquery datasource="#dopsds#" name="ClearAdjust">
+									delete   from reghistory
+									where    RegID = #GetLastStandbyRegAllocated.RegID#
+									and      PrimaryPatronID = #GetLastStandbyRegAllocated.PrimaryPatronID#
+									and      action = 'E'
+									and      finished = false
+									;
+									delete   from reg
+									where    RegID = #GetLastStandbyRegAllocated.RegID#
+									and      PrimaryPatronID = #GetLastStandbyRegAllocated.PrimaryPatronID#
+								</cfquery>
+						
+							<cfelse>
+								<!--- drop invoiced class --->
+								<cfset NextEC = GetNextEC()>
+		
+								<!--- if money was tendered, put back as DC credit on new drop invoice --->
+								<cfquery datasource="#dopsds#" name="GetFeePaid">
+									SELECT   coalesce(REGHISTORY.AMOUNT,0) as amount
+									FROM     REGHISTORY REGHISTORY
+									WHERE    REGHISTORY.PRIMARYPATRONID = #GetLastStandbyRegAllocated.PRIMARYPATRONID# 
+									AND      REGHISTORY.REGID = #GetLastStandbyRegAllocated.REGID#
+								</cfquery>
+		
+								<cfif GetFeePaid.recordcount is 0>
+									<strong>Error in determining relinquishment. Go back and try again.</strong><br><br>
+									<cfabort>
+								</cfif>
+		
+								<cfif (GetFeePaid.recordcount gt 0 and GetFeePaid.amount gt 0) or 1 is 1><!--- remove override is want to suppress $0 invoice --->
+									<cfset NextRelInvoice = GetNextInvoice()>
+								</cfif>
+		
+								<cfquery datasource="#dopsds#" name="RelinquishThisReg">
+									update reg
+									set
+										relinquishdt = now(),
+										regstatus = 'D',
+										relinquishuser = #huserid#,
+										dropreason = 'Relinquished. Class had #GetClassAllocated.allocated# registrations'
+									where primarypatronid = #GetLastStandbyRegAllocated.PRIMARYPATRONID#
+									and   regid = #GetLastStandbyRegAllocated.REGID#
+									;
+									update activity
+									set
+										relinquished = true
+									where RegID = #GetLastStandbyRegAllocated.RegID#
+									and   PrimaryPatronID = #GetLastStandbyRegAllocated.PrimaryPatronID#
+									;
+									insert into Activity
+										(TermID,FacID,Activity,ActivityCode,PatronID,InvoiceFacID,InvoiceNumber,
+										Debit,Credit,line,EC,
+										primarypatronid,regid,isstandby,relinquished)
+									values
+										('#GetClassData.TermID#','#GetClassData.FacID#','#GetClassData.ClassID#','CD',#PatronID#,'#LocalFac#',<cfif GetFeePaid.recordcount gt 0 and GetFeePaid.amount gt 0 or 1 is 1>#NextRelInvoice#<cfelse>0</cfif>,
+										0,<cfif GetFeePaid.recordcount gt 0 and GetFeePaid.amount gt 0 or 1 is 1>#GetFeePaid.amount#<cfelse>0</cfif>,1,#NextEC#,
+										#GetLastStandbyRegAllocated.primarypatronid#,#GetLastStandbyRegAllocated.regid#,true,true)
+									;
+									insert into reghistory
+										(PrimaryPatronID,RegID,invoicefacid,invoicenumber,
+										amount,action,finished,ec,userid)
+									values
+										(#GetLastStandbyRegAllocated.PrimaryPatronID#,#GetLastStandbyRegAllocated.RegID#,'#LocalFac#',<cfif GetFeePaid.recordcount gt 0 and GetFeePaid.amount gt 0 or 1 is 1>#NextRelInvoice#<cfelse>0</cfif>,
+										<cfif GetFeePaid.recordcount gt 0 and GetFeePaid.amount gt 0 or 1 is 1>#GetFeePaid.amount#<cfelse>0</cfif>,'D',true,#NextEC#,#huserid#)
+								</cfquery>
+		
+								<cfif (GetFeePaid.recordcount gt 0 and GetFeePaid.amount gt 0) or 1 is 1><!--- remove override is want to suppress $0 invoice --->
+						
+									<cfquery datasource="#dopsds#" name="GetRelAddress">
+										SELECT   ADDRESSID, MAILINGADDRESSID, INDISTRICT
+										FROM     PATRONRELATIONS 
+										WHERE    PRIMARYPATRONID = #GetLastStandbyRegAllocated.primarypatronid#
+										AND      RELATIONTYPE = 1
+									</cfquery>
+		
+									<cfquery datasource="#dopsds#" name="GetPrimaryPatronLookup">
+										select   patronlookup
+										from     patrons
+										where    patronid = #GetLastStandbyRegAllocated.PrimaryPatronID#
+									</cfquery>
+		
+									<cfset thisdrop = GetDistrictStatus(GetLastStandbyRegAllocated.PrimaryPatronID)>
+		
+									<cfquery datasource="#dopsds#" name="InsertInvoice">
+										insert into invoice
+											(InvoiceFacID,InvoiceNumber,PrimaryPatronID,AddressID,mailingaddressid,
+											InDistrict,insufficientid,
+											TotalFees,UsedCredit,
+											startingbalance,TenderedCash,TenderedCheck,TenderedCC,TenderedChange,NewCredit,
+											Node,userid,dt,PRIMARYPATRONLOOKUP,
+											invoicetype)
+										values
+											('#LocalFac#',#NextRelInvoice#,#GetLastStandbyRegAllocated.PrimaryPatronID#,#GetRelAddress.addressid#,<cfif GetRelAddress.mailingaddressid is "">#GetRelAddress.addressid#<cfelse>#GetRelAddress.mailingaddressid#</cfif>,
+											#tf(thisdrop[1])#, #tf(thisdrop[2])#, 
+											0,0,
+											#GetAccountBalance(GetLastStandbyRegAllocated.PrimaryPatronID)#,0,0,0,0,#GetFeePaid.amount#,
+											'#LocalNode#',#huserID#,now(),'#GetPrimaryPatronLookup.patronlookup#',
+											'-REGDROP-')
+									</cfquery>
+		
+									<cfset EWPDropInvoice = LocalFac & "-" & NextRelInvoice>
+		
+									<cfif GetFeePaid.amount gt 0>
+		
+										<cfquery datasource="#dopsds#" name="GetGLDistCredit">
+											select   AcctID
+											from     GLMaster
+											where    InternalRef = 'DC'
+										</cfquery>
+		
+										<cfquery datasource="#dopsds#" name="InsertClassGL2">
+											insert into GL
+												(Debit,AcctID,InvoiceFacID,InvoiceNumber,EntryLine,ec,activitytype,activity)
+											values
+												(#GetFeePaid.amount#,#GetClassData.GLAcctID#,'#LocalFac#',#NextRelInvoice#,1,#NextEC#,'R','#GetClassData.TermID#-#GetClassData.FacID#-#GetClassData.ClassID#')
+											;
+											insert into GL
+												(Credit,AcctID,InvoiceFacID,InvoiceNumber,EntryLine,ec,activitytype,activity)
+											values
+												(#GetFeePaid.amount#,#GetGLDistCredit.acctID#,'#LocalFac#',#NextRelInvoice#,2,#NextEC#,'R','#GetClassData.TermID#-#GetClassData.FacID#-#GetClassData.ClassID#')
+										</cfquery>
+		
+									</cfif>
+		
+								</cfif>
+
+								<cfquery datasource="#dopsds#" name="GetGLErrorRelInvoice">
+									select dops.getglerror('#LocalFac#', #NextRelInvoice#) as tmp
+								</cfquery>
+
+								<cfif GetGLErrorRelInvoice.tmp is not 0>
+									<cftransaction action="ROLLBACK">
+									<BR><BR><strong>An error occurred at final check processing this enrollment. Go back and try again.</strong>
+									<BR><BR>
+									<input type="Button" class="GoButton" onClick="history.back()" value="Go Back" style="width: 200px;">
+									<cfabort>
+								</cfif>
+
+							</cfif>
+		
+							<cfif EWPRelinquishEmail is 1>
+								<!--- send email to primary and patron (distinct), if set --->
+								<cfquery datasource="#dopsds#" name="GetContactData">
+									SELECT   DISTINCT CONTACTDATA 
+									FROM     PATRONCONTACT 
+									WHERE    CONTACTTYPE = 'E' 
+									AND      PATRONID in (#GetLastStandbyRegAllocated.PRIMARYPATRONID#,#GetLastStandbyRegAllocated.PATRONID#)
+								</cfquery>
+		
+								<cfif GetContactData.recordcount gt 0>
+									<cfset SendTo = ValueList(GetContactData.CONTACTDATA,';')>
+
+									<cfif maildebugmode is not "">
+										<cfset SendTo = maildebugmode>
+									</cfif>
+
+									<cfmail to="#SendTo#" from="Registration_Relinquish_Notification" subject="THPRD Class Registration Relinquishment" server="#EmailServer#" spoolenable="Yes" timeout="30">THPRD Registration Relinquishment Notice
+
+We are sorry to inform you that your standby registration for #GetLastStandbyRegAllocated.LastName#, #GetLastStandbyRegAllocated.FirstName#, class #GetClassData.ClassID# at #GetLastStandbyRegAllocated.NAME# has been relinquished.
+
+Class had #GetClassAllocated.allocated# registrations at the time of relinquishment.
+
+Date/Time of action: #dateformat(now(),"mm/dd/yyyy")# #timeformat(now(),"hh:mmtt")#
+
+<cfif IsDefined("EWPDropInvoice")>
+
+If you are currently on a THPRD computer, you may view the invoice #EWPDropInvoice# at http://db.thprd.org/Thirst/Common/PrintInvoice.cfm?invoicelist=#EWPDropInvoice#
+</cfif>
+									</cfmail>
+		
+								</cfif>
+		
+							</cfif>
+		
+						</cfif>
+
+
+
+
+		
+					</cfif>
+					<!--- end relinquishment process --->
+				</cfloop>
+		
+				<!--- reg addition code is replicated in ConvertWL.cfm --->
+				<cfquery datasource="#dopsds#" name="GetNextRegID">
+					select   coalesce(max(RegID),0) + 1 as tmp
+					from     reg
+					where    primarypatronid = #primarypatronid#
+				</cfquery>
+		
+				<cfquery datasource="#dopsds#" name="GetNextRegHistoryID">
+					select   coalesce(max(RegID),0) + 1 as tmp
+					from     reghistory
+					where    primarypatronid = #primarypatronid#
+				</cfquery>
+		
+				<cfset NextRegID = max(GetNextRegID.tmp,GetNextRegHistoryID.tmp)>
+		
+				<!--- OK to enroll --->
+				<cfif (GetClassAllocated.Allocated lt GetClassData.MaxQty) and (WaitListCount is 0)>
+					<cfset DoEnrollment = 1>
+		
+					<cfif DoEnrollment is 1>
+		
+						<cfquery name="AddToReg" datasource="#dopsds#">
+							insert into reg
+								(RegID,TermID,FacID,ClassID,PatronID,
+								PrimaryPatronID,RegStatus,Senior,
+								DepositOnly,
+								Deferred,
+								feebalance,
+								SessionID,
+								costbasis,
+								miscbasis,
+								indistrict,
+								isstandby)
+							values
+								(#NextRegID#,'#GetClassData.TermID#','#GetClassData.FacID#','#GetClassData.ClassID#',#PatronID#,
+								#PrimaryPatronID#,'E',<cfif GetClassData.Senior is 1>true<cfelse>false</cfif>,
+								<cfif IsDefined("UseDepositMode") and AllowDeposit is 1>true<cfelse>false</cfif>,
+								<cfif IsDefined("UseDeferredMode")>true<cfelse>false</cfif>,
+								<cfif IsDefined("UseDepositMode") and AllowDeposit is 1>#ClassCost+GetClassData.MiscFee-DepositRequired#<cfelse>0</cfif>,
+								'#CurrentSessionID#',
+								#ClassCost#,
+								#GetClassData.MiscFee#,
+								<cfif PrimaryPatronInDistrict is 1>true<cfelse>false</cfif>,
+								<cfif IsDefined("UseEWPName")>true<cfelse>false</cfif>)
+							;
+							select dops.insertregproc(#PrimaryPatronID#, #NextRegID#, 'E', 0, 'W1')
+						</cfquery>
+		
+						<cfset NextEC = GetNextEC()>
+		
+						<cfif IsDefined("UseDepositMode") and AllowDeposit is 1>
+		
+							<cfquery datasource="#dopsds#" name="InsertIntoHistory">
+								insert into reghistory
+									(amount,action,primarypatronid,EC,RegID,
+									balance,
+									depositonly,pending,userid)
+								values
+									(#DepositRequired#,'E',#primarypatronid#,#nextec#,#NextRegID#,
+									#ClassCost+GetClassData.MiscFee-DepositRequired#,
+									true,true,#huserid#)
+							</cfquery>
+		
+						<cfelse>
+
+							<cfquery datasource="#dopsds#" name="InsertIntoHistory2">
+								insert into reghistory
+									(amount,action,primarypatronid,EC,RegID,
+									deferred,balance,pending,userid)
+								values
+									(<cfif IsDefined("UseEWPName")><cfif GetClassData.truecost is "">0<cfelse>#GetClassData.truecost#</cfif><cfelse>#ClassCost#</cfif>,'E',#primarypatronid#,#nextec#,#NextRegID#,
+									<cfif IsDefined("WasDeferredName")>true<cfelse>false</cfif>,#ClassCost+GetClassData.MiscFee#,false,#huserid#)
+							</cfquery>
+	
+							<cfif not IsDefined("UseEWPName")>
+	
+								<cfif GetClassData.MiscFee gt 0>
+									<cfset NextEC = GetNextEC()>
+	
+									<cfquery datasource="#dopsds#" name="InsertIntoHistory">
+										insert into reghistory
+											(amount,action,primarypatronid,EC,RegID,IsMiscFee,pending,userid)
+										values
+											(<cfif IsDefined("UseEWPName")><cfif GetClassData.truecost is "">0<cfelse>#GetClassData.truecost#</cfif><cfelse>#GetClassData.MiscFee#</cfif>,'E',#primarypatronid#,#nextec#,#NextRegID#,true,false,#huserid#)
+									</cfquery>
+	
+								</cfif>
+	
+							</cfif>
+		
+						</cfif>
+		
+					</cfif>
+					
+				<cfelseif AllowWL is 1>
+					<cfset WaitListCount = WaitListCount + 1>
+		
+					<!--- <cfquery datasource="#dopsds#" name="GetWaitListCount2">
+						select   coalesce(count(*),0) as GetWaitListCount
+						from     Reg
+						where    TermID = '#GetClassData.TermID#'
+						and      FacID = '#GetClassData.FacID#'
+						and      ClassID = '#GetClassData.ClassID#'
+						and      RegStatus = 'W'
+					</cfquery> --->
+		
+					<cfset ThisStatus = "W">
+		
+					<!--- enrollment (wait list) --->
+					<cfquery name="AddToRegWL" datasource="#dopsds#">
+						insert into reg
+							(RegID,TermID,FacID,ClassID,PatronID,waswl,
+							PrimaryPatronID,RegStatus,Senior,
+							Deferred,DeferredPaid,DepositOnly,
+							SessionID,indistrict)
+						values
+							(#NextRegID#,'#GetClassData.TermID#','#GetClassData.FacID#','#GetClassData.ClassID#',#PatronID#,true,
+							#PrimaryPatronID#,'#ThisStatus#',<cfif GetClassData.Senior is 1>true<cfelse>false</cfif>,
+							false,false,false,
+							'#CurrentSessionID#',<cfif PrimaryPatronInDistrict is 1>true<cfelse>false</cfif>)
+						;
+						insert into reghistory
+							(action,primarypatronid,RegID,EC,pending,userid)
+						values
+							('W',#primarypatronid#,#nextRegID#,#GetNextEC()#,true,#huserid#)
+						;
+						select dops.insertregproc(#PrimaryPatronID#, #NextRegID#, 'E', 0, 'W1')
+					</cfquery>
+		
+					<!--- <cfset msg = "Waiting list registrations are not allowed">
+					<cfset errormsg = 1> --->
+				</cfif>
+	
+			</cfif>
+
+		</cfif>
+
+	</cfloop>
+
+	<cfif 1 is 11>
+		<cfabort>
+	</cfif>
+
+
+
+</cftransaction>

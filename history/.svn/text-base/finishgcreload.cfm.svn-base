@@ -1,0 +1,182 @@
+
+<CFIF NOT Isdefined("form.ccType") OR not Isdefined("session.myCart") or arraylen(session.myCart) EQ 0>
+	<CFLOCATION url="giftcards.cfm">
+</CFIF>
+
+<CFSCRIPT>
+attributes.ccNum = trim(form.ccNum1) & trim(form.ccNum2) & trim(form.ccNum3) & trim(form.ccNum4);
+attributes.ccType = trim(form.ccType);
+attributes.ExpYear = form.ccExpYear;
+attributes.ExpMonth = form.ccExpMonth;
+attributes.ccexp = "#attributes.ExpMonth##right(attributes.ExpYear,2)#";
+attributes.ccexp4valid = "#attributes.ExpMonth#/#attributes.ExpYear#";
+attributes.ccv = form.ccv;
+attributes.amountdue = form.amountdue;
+attributes.creditused = form.creditused;
+attributes.netbalance = form.netbalance;
+attributes.primarypatronid = cookie.uid;
+attributes.redirecterrorpage = "giftcards.cfm";
+finalCart = ArrayNew(1);
+finalCart = session.myCart;
+</CFSCRIPT>
+
+<CFINCLUDE template="/portalINC/webbuyothercredit.cfm">
+
+<!--- do confirmation display if we make it that far --->
+
+<CFIF Isdefined("NextInvoice")>
+<!--- send notification to Elizabeth --->
+	<cfquery datasource="#dopsds#" name="getPatronEmail">
+		select loginemail from patrons where patronid = #cookie.uid#
+	</cfquery>	
+			
+	<CFMAIL to="webadmin@thprd.com" from="webadmin@thprd.com" subject="Online Gift Card Reload">
+	Patron #cookie.uid# has just reloaded a gift card from their portal page.
+	
+	Thank you.
+	- Web Admin
+	</CFMAIL>
+		
+	<!--- send email to purchaser --->
+	<CFIF getPatronEmail.recordcount GT 0 and getPatronEmail.loginemail NEQ "">
+		<CFSET theEmail = "#getPatronEmail.loginemail#">
+		<CFSET invoicelist = "#LocalFac#-#NextInvoice#">
+		<CFINCLUDE template="/portalINC/MailGCInvoice.cfm">	
+	</CFIF>
+	<!--- here is the routine to email the invoice --->
+	<CFSET temp = arrayclear(session.myCart)>
+</CFIF>
+
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+	<title>Giftcards</title>
+	<SCRIPT language="javascript" src="/portal/js/autotab.js"></SCRIPT>
+	<SCRIPT language="javascript">
+		function register() {
+			if (document.gift.cardnumber2reg.value.length != 16) {
+ 				alert('Cardnumbers have 16 digits without any spaces. Please enter the card number in its correct format.');
+				document.gift.cardnumber2reg.focus();
+				return false;
+ 			}
+			else {
+				document.gift.submit();
+			}
+		}
+	</SCRIPT>
+	
+<style> 
+#liner{
+	padding: 2px 2px 2px 2px;
+	background-color:#ffffff;
+	border-top-color:#999999;
+	border-top-style:solid;
+	border-top-width:1px;
+}
+</style>
+
+<script language="javascript">
+function checkAmount() {
+	if (document.gift.reloadamount.value < 5) {
+		alert("Minimum value for a gift card reload is $5.00");
+		document.gift.reloadamount.focus();
+		return false;
+	}
+	else if (document.gift.reloadamount.value > 500) {
+		alert("Maximum value for a gift card reload is $500.00");
+		document.gift.reloadamount.focus();
+		return false;
+	}
+	else {
+		//alert("Amount okay");
+		return true;
+	}
+}	
+</script>
+	
+</head>
+
+<body leftmargin="0" topmargin="0">
+
+
+<cfset localfac = "WWW">
+<cfset localnode = "W1">
+<cfset DS = "thirst">
+
+<!--- <cfif not IsDefined("PrimaryPatronID")>
+	<strong>No patron ID specified.</strong>
+	<cfabort>
+</cfif> --->
+
+<cfoutput>
+
+
+
+
+
+
+<table border="0" cellpadding="0" cellspacing="0" width="750">
+  <tr>
+   <td valign=top>
+   		<table border=0 cellpadding=2 cellspacing=0 width=749>
+			<tr>
+				<td colspan=2 class="pghdr">
+				<!--- start header --->
+				<CFINCLUDE template="/portalINC/dsp_header.cfm">
+				<!--- end header --->
+				</td>
+			</tr>
+			<tr>
+				<td valign=top>
+					<table border=0 cellpadding=2 cellspacing=0>
+						<tr>
+							<td><img src="images/spacer.gif" width="130" height="1" border="0" alt=""></td>
+						</tr>
+						<tr>
+							<td valign=top nowrap class="lgnusr"><br>
+							<!--- start nav --->
+							<cfinclude template="/portalINC/admin_nav_history.cfm">
+							<!--- end nav --->
+							</td>
+						</tr>		
+					</table>		
+				</td>
+				<td valign=top class="bodytext" width="100%">
+				<!--- start content --->
+				<br><span class="pghdr">Registered Gift Cards</span><br>
+						<!--- looks for content - displays check back msg if current content not available --->
+		<br>
+		
+		<CFIF Isdefined("NextInvoice")> Transaction successful. Thank you for your purchase.<br>
+		<br>
+		 Please <a target="new" href="/portal/includes/PrintInvoice.cfm?invoicelist=#LocalFac#-#NextInvoice#">click here</a> to view your invoice. The invoice has also been emailed to your email address.
+		 </CFIF>
+		
+		<CFIF Isdefined("url.error")>
+			<font color="red"><strong>#url.error#</strong></font><br>
+			<input type="Button" onClick="history.back()" value="Back" class="form_input">
+		</CFIF>
+
+				<!--- end content --->
+				</td>
+			</tr>
+		</table>   
+   </td>
+  </tr>
+  <tr>
+   <td colspan="2" valign="top">&nbsp;</td>
+  </tr>
+  <cfinclude template="/portalINC/footer.cfm">
+
+</table>
+</body>
+</html>
+</cfoutput>
+
+
+
+
+
+

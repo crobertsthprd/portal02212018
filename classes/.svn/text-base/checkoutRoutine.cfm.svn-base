@@ -1,0 +1,421 @@
+<CFSET invoicetypestr = "-REG-">
+<!--- initial giftcard set up --->
+<!--- convert to proper naming --->
+<CFSET othercreditused = form.giftcarddebitamount>
+<CFSET othercreditdata = form.giftcardnumber>
+<cfset OtherCreditReturn = 0>
+<cfset huserid = 0>
+<cfset primarypatronid = pid>
+<cfset CurrentSessionID = GetSessionID(primarypatronid)>
+<CFSET facardid = "">
+<cfset ccnum = ccnum1 & ccnum2 & ccnum3 & ccnum4>
+<cfset TOTALNEWCREDIT = 0>
+<cfset ccexp = ccExpMonth & right(ccExpYear, 2)>
+
+<cfif ccnum is not "">
+	<cf_cryp type="en" string="#ccNum#" key="#key#">
+	<cfset ccd = cryp.value>
+	<cf_cryp type="en" string="#ccv#" key="#key#">
+	<cfset ccven = cryp.value>
+
+	<cfif ccd is "" or ccven is "">
+		Missing or incorrect credit card data detected
+		<BR><BR><a href="javascript:history.back();">Go Back</a>
+		<cfabort>
+	</cfif>
+
+</cfif>
+
+<cfif othercreditused gt 0 and OtherCreditData is not 0>
+	<cfset ocNum = replace(OtherCreditData," ","","all")>
+	<cfset ocNum = REREPLACE(ocNum,"[^0-9]","","ALL")>
+	<cf_cryp type="en" string="#ocNum#" key="#skey#">
+	<cfset enOtherCreditData = cryp.value>
+
+	<cfquery name="GetCardID" datasource="#dopsds#">
+		select   cardid
+		from     othercreditdata
+		where    othercreditdata = '#enOtherCreditData#'
+		and      activated = true
+		and      valid = true
+	</cfquery>
+
+	<cfif GetCardID.recordcount is not 1>
+		<font color="red"><strong>Error in fetching Gift Card ID or had insufficient funds or is invalid/not activated.</strong></font><br><br>
+		<BR><BR><a href="javascript:history.back();">Go Back</a>
+		<cfabort>
+	</cfif> 
+
+	<cfquery datasource="#dopsds#" name="GetCreditType">
+		SELECT   othercreditdata.othercredittype, othercreditdata.cardid, othercredittypes.othercreditdesc, othercreditdata.othercreditdata
+		FROM     othercreditdata othercreditdata
+		         INNER JOIN othercredittypes othercredittypes ON othercreditdata.othercredittype=othercredittypes.othercredittype
+		where    othercreditdata.othercreditdata = '#enOtherCreditData#'
+	</cfquery>
+
+	<cfif GetCreditType.recordcount is not 1>
+		<font color="red"><strong>Error in fetching Gift Card data information.</strong><font color="red">
+		<BR><BR><a href="javascript:history.back();">Go Back</a>
+		<cfabort>
+	</cfif>
+	
+	<!--- look up appid in case we are using an FA card --->
+	 <cfif othercreditused gt 0>
+  		<cfset facardid = GetCurrentOtherCreditFAAppID(GetCardID.cardid)>
+ 	</cfif>
+
+	<cfset OtherCreditGLAcctID = GetOtherCreditGLAcctID(GetCreditType.cardid)>
+</cfif>
+
+<!--- define vars for code compatability with internal --->
+<cfset TenderedCash = 0>
+<cfset TenderedCheck = 0>
+<cfset TenderedChange = 0>
+<cfset primarypatronid = cookie.uID>
+
+<cfquery datasource="#dopsds#ro" name="GetGLDistCredit" cachedwithin="#CreateTimeSpan(1,0,0,0)#">
+	select   AcctID
+	from     GLMaster
+	where    InternalRef = 'DC'
+</cfquery>
+
+<cfif GetGLDistCredit.RecordCount is not 1>
+	<strong>Error in fetching system information. Go back and try again.</strong>
+	<BR><BR><a href="javascript:history.back();">Go Back</a>
+	<cfabort>
+</cfif>
+
+<cfset GLDistCreditAccount = GetGLDistCredit.acctID>
+
+<cfif FindNoCase("In", cookie.DS)>
+	<cfset ds_stat = "true">
+<cfelse>
+	<cfset ds_stat = "false">
+</cfif>
+
+<cftransaction action="BEGIN" isolation="REPEATABLE_READ">
+	<cfset keepthisinvoice = 0>
+
+	<CFQUERY name="createlock" datasource="#dopsds#">
+		SELECT   pk
+		FROM     dops.patronrelations
+		WHERE    secondarypatronid = #primarypatronid#
+		for      update
+	</CFQUERY>
+
+	<!---
+	<cfif systemlock() is 0>
+		Could not obtain system lock. Go back and try again.
+		<BR><BR><a href="javascript:history.back();">Go Back</a>
+		<cfabort>
+	</cfif>
+	--->
+
+	<cfquery datasource="#dopsds#" name="GetPatronData">
+		select   *
+		from     SessionPatrons
+		where    SessionID = '#CurrentSessionID#'
+		order    by relationtype
+	</cfquery>
+
+	<cfset ActivityLine = 0>
+	
+	<cfquery datasource="#dopsds#" name="GetSessionAddress">
+		select   addressid<!--- address1, address2, city, state, zip, indistaddress1, indistcity, indiststate, indistzip --->
+		from     sessionpatrons
+		where    sessionid = '#currentsessionID#'
+		and      relationtype = 1
+	</cfquery>
+
+	<cfif GetPatronData.patronparcel[1] is not "">
+		<cfset tmpparcel = GetPatronData.patronparcel[1]>
+	<cfelse>
+		<cfset tmpparcel = 0>
+	</cfif>
+
+	<cfset UseThisAddress = GetSessionAddress.addressid>
+	<cfset NextInvoice = GetNextInvoice()>
+
+	<cfquery datasource="#dopsds#" name="GetMailingAddress">
+		select   mailingaddressid
+		from     patronrelations
+		where    primarypatronid = #primarypatronid#
+		and      secondarypatronid = #primarypatronid#
+	</cfquery>
+
+	<cfset TotalOtherCreditAmount = 0>
+	<cfinclude template="checkoutReg.cfm">
+
+	<cfif TotalOtherCreditAmount is not OtherCreditReturn>
+		<BR><BR><strong>Error: Calculated Gift Card Credit does not what was expected. Expected #numberformat(OtherCreditReturn,"999,999.99")#: Found #numberformat(TotalOtherCreditAmount,"999,999.99")# Difference of #numberformat(TotalOtherCreditAmount - OtherCreditReturn,"999,999.99")#</strong>. Go back and try again.
+		<BR><BR><a href="javascript:history.back();">Go Back</a>
+		<cfabort>
+	</cfif>
+
+	<cfif othercreditused gt 0>
+		<cfset facardid = GetCurrentOtherCreditFAAppID(GetCardID.cardid)>
+	</cfif>
+
+	<cfquery datasource="#dopsds#" name="InsertInvoice">
+		insert into invoice
+			(InvoiceFacID,InvoiceNumber,PrimaryPatronID,AddressID,
+			mailingaddressid,
+			InDistrict,insufficientid,
+
+			TotalFees, UsedCredit, othercreditused,
+			startingbalance, TenderedCash, TenderedCheck, TenderedCC, TenderedChange,
+
+			othercreditusedcardid,faappid,
+			CCA,CCED,CEW,ccType,CCV,
+			Node,userid,
+			dt, invoicetype)
+		values
+			('#LocalFac#',#NextInvoice#,#PrimaryPatronID#,#UseThisAddress#,
+			<cfif GetMailingAddress.mailingaddressid is "">#UseThisAddress#<cfelse>#GetMailingAddress.mailingaddressid#</cfif>,
+			#ds_stat#, false, 
+
+			#TotalFees#, #CreditUsed#, #othercreditused#,
+			#OriginalAvailableCredit#, 0, 0, #TenderedCharge#, 0,
+
+			<cfif othercreditused gt 0>#GetCardID.cardid#<cfelse>null</cfif>,<cfif othercreditused gt 0 and facardid is not "">#facardid#<cfelse>null</cfif>,
+			<cfif ccNum is not "">'#ccd#','#ccExp#','#right(ccNum,4)#','#left(ccNum,1)#',<cfif ccv is "">null<cfelse>'#ccven#'</cfif><cfelse>null,null,null,null,null</cfif>,
+			'#LocalNode#',#hUserID#,
+			now(), '#invoicetypestr#')
+	</cfquery>
+
+	<cfset AllMonies = TenderedCharge>
+
+	<!--- ----------- --->
+	<!--- used credit --->
+	<!--- ----------- --->
+	<cfif CreditUsed greater than 0>
+		<cfset KeepThisInvoice = 1>
+		<cfset NextEC = GetNextEC()>
+		<cfset ActivityLine = ActivityLine + 1>
+
+		<cfquery datasource="#dopsds#" name="AddToActivity">
+			insert into Activity
+				(ActivityCode,PrimaryPatronID,PatronID,InvoiceFacID,InvoiceNumber,Debit,Credit,line,EC)
+			values
+				('CU',#PrimaryPatronID#,#PrimaryPatronID#,'#LocalFac#',#NextInvoice#,#CreditUsed#,0,#ActivityLine#,#NextEC#)
+			;
+
+			<cfset GLLineNo = GLLineNo + 1>
+
+			insert into GL
+				(Debit,AcctID,InvoiceFacID,InvoiceNumber,EntryLine,EC,activitytype,activity)
+			values
+				(#CreditUsed#,#GLDistCreditAccount#,'#LocalFac#',#NextInvoice#,#GLLineNo#,#NextEC#,'C','Credit')
+		</cfquery>
+
+	</cfif>
+
+	<!--- -------------- --->
+	<!--- Gift Card used --->
+	<!--- -------------- --->
+	<cfif othercreditused gt 0>
+		<cfset KeepThisInvoice = 1>
+		<cfset thisEC = GetNextEC()>
+		<!--- subtract from card balance --->
+
+		<cfquery datasource="#dopsds#" name="OCCBalCheck">
+			insert into othercreditdatahistory
+				(cardid,action,userid,invoicefacid,invoicenumber,module,debit,ec)
+			values
+				(#GetCardID.cardid#,'U',#huserid#,'#LocalFac#',#NextInvoice#,'DO',#OtherCreditUsed#,#thisec#)
+			;
+			Select  sumnet
+			from    othercredithistorysums
+			where   cardid = #GetCardID.cardid#
+		</cfquery>
+
+		<cfif OCCBalCheck.sumnet lt 0>
+			<BR><BR><strong>Error: Calculated Gift Card balance was found to be negative: #numberformat(OCCBalCheck.sumnet,"999,999.99")#. Go back and try again.</strong>
+			<BR><BR><a href="javascript:history.back();">Go Back</a>
+			<cfabort>
+		</cfif>
+
+		<cfset ActivityLine = ActivityLine + 1>
+
+		<cfquery datasource="#dopsds#" name="AddToActivity2">
+			insert into Activity
+				(ActivityCode,PatronID,InvoiceFacID,InvoiceNumber,Debit,Credit,line,EC,primarypatronid)
+			values
+				('OCU',#PrimaryPatronID#,'#LocalFac#',#NextInvoice#,0,#OtherCreditUsed#,#ActivityLine#,#thisEC#,#primarypatronid#)
+			;
+
+			<cfset GLLineNo = GLLineNo + 1>
+
+			insert into GL
+				(debit,AcctID,InvoiceFacID,InvoiceNumber,EntryLine,ec,activitytype,activity)
+			values
+				(#OtherCreditUsed#,#OtherCreditGLAcctID#,'#LocalFac#',#NextInvoice#,#GLLineNo#,#thisEC#,'OCU','#GetCreditType.othercreditdesc# Used')
+		</cfquery>
+
+	</cfif>
+
+	<!--- -------------------- --->
+	<!--- post tendered monies --->
+	<!--- -------------------- --->
+	<cfif AllMonies greater than 0>
+		<cfset KeepThisInvoice = 1>
+		<cfset ActivityLine = ActivityLine + 1>
+
+		<cfquery datasource="#dopsds#" name="AddToActivity">
+			insert into Activity
+				(ActivityCode,PatronID,InvoiceFacID,InvoiceNumber,Debit,Credit,line,EC,primarypatronid)
+			values
+				('PMT',#PrimaryPatronID#,'#LocalFac#',#NextInvoice#,0,#AllMonies#,#ActivityLine#,#GetNextEC()#,#primarypatronid#)
+		</cfquery>
+
+	</cfif>
+
+	<cfquery datasource="#dopsds#" name="GetPrimaryPatronLookup">
+		select   patronlookup
+		from     patrons
+		where    patronid = #PrimaryPatronID#
+	</cfquery>
+
+	<cfquery datasource="#dopsds#" name="FinalInvoiceData">
+		update  invoice
+		set
+			NewCredit = #TotalNewCredit#,<!---  - OtherCreditReturn --->
+			DT = now(),
+			addressid = #UseThisAddress#, <!--- <cfif GetAddressID.thisnewaddressid is not 0>#GetAddressID.thisnewaddressid#<cfelse>#GetAddressID.thisaddressid#</cfif>, --->
+			primarypatronlookup = '#GetPrimaryPatronLookup.patronlookup#'
+		where   InvoiceFacID = '#LocalFac#'
+		and     InvoiceNumber = #NextInvoice#
+		;
+		update  patrons
+		set
+			lastuse = current_date
+		where   patronid = #primarypatronid#
+	</cfquery>
+
+	<cfquery datasource="#dopsds#" name="checkbalance">
+		select   invoicenet
+		from     invoicenet
+		WHERE    INVOICEFACID = '#LocalFac#' 
+		AND      INVOICENUMBER = #NextInvoice#
+	</cfquery>
+
+	<cfif checkbalance.invoicenet is not ExpEndBal>
+		<cftransaction action="ROLLBACK">
+		<BR><BR><strong>Account balance did not match what was expected. Go back and try again.</strong>
+		<BR><BR><a href="javascript:history.back();">Go Back</a>
+		<cfabort>
+	</cfif>
+
+	<cfif checkbalance.recordcount is 1 and checkbalance.invoicenet lt 0>
+		<cftransaction action="ROLLBACK">
+		<BR><BR><strong>A negative account balance of #numberformat(val(checkbalance.invoicenet),"9,999.99")# was detected. Go back and try again.</strong>
+		<BR><BR><a href="javascript:history.back();">Go Back</a>
+		<cfabort>
+	</cfif>
+
+	<!--- <cfif 1 is 12>
+
+		<cfquery datasource="#dopsds#" name="_GetInv">
+			SELECT   totalfees, startingbalance, usedcredit, newcredit, tenderedcash, tenderedcheck, tenderedcc, othercreditused
+			FROM     invoice
+			WHERE    InvoiceFacID = 'WWW' 
+			AND      InvoiceNumber = #NextInvoice# 
+		</cfquery>
+	
+		<cfquery datasource="#dopsds#" name="_GetGLHistory">
+			SELECT   *
+			FROM     gl
+			WHERE    InvoiceFacID = 'WWW' 
+			AND      InvoiceNumber = #NextInvoice# 
+			order by entryline
+		</cfquery>
+	
+		<cfdump var="#_GetInv#">
+		<cfdump var="#_GetGLHistory#">
+	</cfif> --->
+
+	<cfquery datasource="#dopsds#" name="GetGLError">
+		select dops.getglerror('#LocalFac#', #NextInvoice#) as tmp
+	</cfquery>
+
+	<cfif GetGLError.tmp is not 0>
+		<BR><BR><strong>An error occurred at final check processing this invoice. Go back and try again. If problem persists, call THPRD.</strong>
+
+		<cfif 1 is 1>
+			<BR><BR><cfoutput>Mismatch: $ #numberformat(GetGLError.tmp, "99,999.99")#</cfoutput>
+		</cfif>
+
+		<BR><BR><a href="javascript:history.back();">Go Back</a>
+		<cfabort>
+	</cfif>
+
+	<!--- correct improper patronid in activity vs reghistory --->
+	<cfquery datasource="#dopsds#" name="GetImproperRegIDInActivity">
+		SELECT   activity.pk AS activitypk, reg.patronid AS regpatron
+		FROM     dops.activity activity
+		         INNER JOIN dops.reg ON activity.primarypatronid=reg.primarypatronid AND activity.regid=reg.regid AND activity.patronid!=reg.patronid 
+		where    activity.primarypatronid = #PrimaryPatronID#
+		ORDER BY activity.pk desc
+		limit    50
+	</cfquery>
+
+	<cfif GetImproperRegIDInActivity.recordcount gt 0>
+	
+		<cfloop query="GetImproperRegIDInActivity">
+	
+			<cfquery datasource="#dopsds#" name="UpdateReg">
+				update activity
+				set
+					patronid = #regpatron#
+				where pk = #activitypk#
+			</cfquery>
+	
+		</cfloop>
+	
+	</cfif>
+
+	<!--- close session
+	<cfquery name="ClearData" datasource="#dopsds#">
+		delete  from SessionPatronContact
+		where   SessionID = '#CurrentSessionID#'
+		;
+		delete  from SessionPasses
+		where   SessionID = '#CurrentSessionID#'
+		;
+		delete  from SessionPassMembers
+		where   SessionID = '#CurrentSessionID#'
+		;
+		delete  from SessionCheckOut
+		where   SessionID = '#CurrentSessionID#'
+		;
+		delete  from SessionRegDrop
+		where   SessionID = '#CurrentSessionID#'
+		;
+		delete  from SESSIONQUERYWORDS
+		where   SessionID = '#CurrentSessionID#'
+		;
+		delete  from SessionPatrons
+		where   SessionID = '#CurrentSessionID#'
+		;
+		delete  from SessionPatronContact
+		where   SessionID = '#CurrentSessionID#'
+		;
+		delete  from SESSIONPATRONSORIGDATA
+		where   SessionID = '#CurrentSessionID#'
+	</cfquery> --->
+	
+	<cfif 1 is 11>
+		<BR><BR><strong>Rolled back for testing.</strong>
+		<cfabort>
+	</cfif>
+
+	<!--- insert invoiceID for mailing --->
+	<cfquery datasource="#dopsds#" name="queuemailer">
+		insert into webinvoicequeue
+		(invoicenumber,email)
+		VALUES
+		(#NextInvoice#,'#cookie.uemail#')
+	</cfquery>
+</cftransaction>
+
+ 

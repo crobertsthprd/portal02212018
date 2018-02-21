@@ -1,0 +1,50 @@
+
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Request Log File from localhost and node.js </title>
+  </head>
+  <body>
+    <a href="#" id="get-data">Get Log</a>
+    <br><br>
+    <div id="console"></div>
+    <hr>
+    <div id="main"></div>
+    
+    <script src="https://code.jquery.com/jquery-1.9.1.min.js"></script>
+    <script>
+    
+    $(document).ready(function () {
+  
+  $.ajaxSetup({ cache: false }); // cache problems on mobile
+  
+  $('#get-data').click(function(event) {
+   	alert('start call');
+	event.preventDefault();
+ 
+   	$.ajax('https://127.0.0.1:8000', {
+      success: function(data) {
+         $('#main').html(data);
+	    $('#console').text('The log file has been successfully loaded');
+	    if (data.indexOf("482299") > 0) {
+		  alert("found copk");  
+	    }
+	    else {
+	    	alert("copk not found");
+	    }
+      },
+      error: function() {
+         $('#console').text('An error occurred');
+      }
+   	});
+   });
+    
+  
+});
+    
+    </script>
+  </body>
+</html>
+

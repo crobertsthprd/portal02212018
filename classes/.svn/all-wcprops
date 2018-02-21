@@ -1,0 +1,221 @@
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/thprd/!svn/ver/37/trunk/webroot/secure/portal/classes
+END
+ccv.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/ccv.cfm
+END
+checkoutRoutine.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/thprd/!svn/ver/25/trunk/webroot/secure/portal/classes/checkoutRoutine.cfm
+END
+mylist.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/mylist.cfm
+END
+cdescription.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/cdescription.cfm
+END
+help.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/help.cfm
+END
+GetPCConfig.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/GetPCConfig.cfm
+END
+cassessment.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/cassessment.cfm
+END
+ccomments.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 71
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/ccomments.cfm
+END
+index2.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/index2.cfm
+END
+dropclass.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/svn/thprd/!svn/ver/26/trunk/webroot/secure/portal/classes/dropclass.cfm
+END
+searchvideo.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/searchvideo.cfm
+END
+queryclasses.cfmMAY82009
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/queryclasses.cfmMAY82009
+END
+class_summary_receipt.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/svn/thprd/!svn/ver/37/trunk/webroot/secure/portal/classes/class_summary_receipt.cfm
+END
+querycategory.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/querycategory.cfm
+END
+categories.cfmREMOVE
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/categories.cfmREMOVE
+END
+queryclassescore.cfmMAY72009
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/queryclassescore.cfmMAY72009
+END
+regsuccess.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/thprd/!svn/ver/16/trunk/webroot/secure/portal/classes/regsuccess.cfm
+END
+queryclassescore.cfmMAY82009
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/queryclassescore.cfmMAY82009
+END
+index.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/index.cfm
+END
+cassessments.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/cassessments.cfm
+END
+catdisplay.cfmREMOVE
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/catdisplay.cfmREMOVE
+END
+processreg.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/thprd/!svn/ver/23/trunk/webroot/secure/portal/classes/processreg.cfm
+END
+searchhelp.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/searchhelp.cfm
+END
+addclass.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/addclass.cfm
+END
+class_summary.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/thprd/!svn/ver/32/trunk/webroot/secure/portal/classes/class_summary.cfm
+END
+queryclasses.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/thprd/!svn/ver/29/trunk/webroot/secure/portal/classes/queryclasses.cfm
+END
+showcategories.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/showcategories.cfm
+END
+shownewreg.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/shownewreg.cfm
+END
+queryclassescore.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/queryclassescore.cfm
+END
+queryclassesfinal.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/queryclassesfinal.cfm
+END
+showsubcategories.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/showsubcategories.cfm
+END
+results.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/results.cfm
+END
+checkoutReg.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/checkoutReg.cfm
+END
+reg_functions.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/svn/thprd/!svn/ver/14/trunk/webroot/secure/portal/classes/reg_functions.cfm
+END
+class_summary_receipt_new.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/class_summary_receipt_new.cfm
+END
+classescommon.cfm
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/thprd/!svn/ver/9/trunk/webroot/secure/portal/classes/classescommon.cfm
+END

@@ -1,0 +1,176 @@
+<html>
+<head>
+<title>Update Contact Information</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+
+</head>
+<cfoutput>
+<cfswitch expression="#type#">
+	<cfcase value="H"><!--- home phone --->
+		<cfset typename = "Home Phone">
+		<cfquery name="qGetValue" datasource="#request.reg_dsn#">
+			select contactdata as currentvalue
+			from patroncontact
+			where contacttype = '#type#'
+			and patronID = #pID#
+		</cfquery>
+	</cfcase>
+	<cfcase value="W"><!--- work phone --->
+		<cfset typename = "Work Phone">
+		<cfquery name="qGetValue" datasource="#request.reg_dsn#">
+			select contactdata as currentvalue
+			from patroncontact
+			where contacttype = '#type#'
+			and patronID = #pID#
+		</cfquery>
+	</cfcase>
+	<cfcase value="C"><!--- cell phone --->
+		<cfset typename = "Cell Phone">
+		<cfquery name="qGetValue" datasource="#request.reg_dsn#">
+			select contactdata as currentvalue
+			from patroncontact
+			where contacttype = '#type#'
+			and patronID = #pID#
+		</cfquery>
+	</cfcase>
+	<cfcase value="E"><!--- email --->
+		<cfset typename = "Email Address">
+		<cfquery name="qGetValue" datasource="#request.reg_dsn#">
+			select loginemail as currentvalue
+			from patrons
+			where patronlookup = '#plkup#'
+		</cfquery>
+	</cfcase>
+</cfswitch>
+<body topmargin="9" leftmargin="0" marginheight="9" marginwidth="0" onLoad="document.updatecontact.newcontact.focus();">
+<cfif not isdefined('updatecontact')>
+	<form name="updatecontact" method="post" action="#cgi.request_uri#">
+		<table width="375" cellpadding=1 border=0 cellspacing="0" bgcolor="00000" align=center>
+			<tr>
+			<td valign=top>
+				<table width=100% border=0 cellpadding=2 cellspacing=0 bgcolor="0048d0">
+				<tr>
+				<td class="lgnhdr" align=center colspan=2><br><strong>Update My #typename#</strong><br><br></td>
+				</tr>
+				<tr>
+				<td rowspan=3><img src="../images/spacer.gif" width="30" height="115" border="0" alt=""></td>
+				<td valign=top width=100%>
+					<table border=0 cellpadding=1 cellspacing="0" width=100%>
+					<cfif qGetValue.recordcount gt 0>
+						<tr>
+						<td class="lgntext" valign="top">
+							<strong>Current #typename#<span class="lgnmsg">*</span> </strong><br><input type="text" name="currentcontact" value="#qGetValue.currentvalue#" class="form_input" size=25 maxlength="50"><br>
+						</td>
+						</tr>
+					</cfif>
+					<tr>
+					<td class="lgntext" valign="top"><br>
+						<strong>New #typename#<span class="lgnmsg">*</span> </strong><br><input type="text" name="newcontact" class="form_input" size=25 maxlength="50"><br>
+					</td>
+					</tr>
+					
+					<tr>
+					<td class="lgntext" valign="top">
+						<br><input type="submit" name="updatecontact" class="form_submit" value="Add / Update #typename#">
+					</td>
+					</tr>
+					</table>
+				</td>
+				<td rowspan=3><img src="../images/spacer.gif" width="15" height="130" border="0" alt=""></td>
+				</tr>
+				</table>
+			</td>
+			</tr>
+		</table>
+		<input type="hidden" name="type" value="#type#">
+		<input type="hidden" name="pID" value="#pID#">
+		<input type="hidden" name="oldvalue" value="#qGetValue.currentvalue#">
+		<cfif isdefined('plkup')>
+			<input type="hidden" name="plkup" value="#plkup#">
+		</cfif>
+	</form>
+<cfelse>
+	<cfswitch expression="#form.type#">
+		<cfcase value="e"><!--- email --->
+			 <cfquery name="qUpdate" datasource="#request.reg_dsn#">
+				update patrons
+				set loginemail = '#form.newcontact#'
+				where patronlookup = '#plkup#'
+			</cfquery>
+
+<CFIF trim(form.newcontact) NEQ "" AND trim(form.oldvalue) NEQ "">
+	<CFMAIL to="#form.newcontact#" cc="#form.oldvalue#" bcc="webadmin@thprd.com" from="webadmin@thprd.com" subject="THPRD Online Registration: Account Modification Email Address">
+Hello,
+
+We just wanted to let you know that we have changed your contact email from #form.oldvalue# to #form.newcontact#.
+The change was made #dateformat(now(),"dddd mmmm d, yyyy")# at #timeformat(now(),"hh:mm:ss tt")#.
+
+Thanks,
+THPRD Online Registration
+	</CFMAIL>
+</CFIF>
+		</cfcase>
+	</cfswitch>
+		<cfquery name="qCheckValue" datasource="#request.reg_dsn#">
+			select contactdata
+			from patroncontact
+			where contacttype = '#type#'
+			and patronID = #pID#
+		</cfquery>
+		<cfif qCheckValue.recordcount gt 0>
+			<cfquery name="qUpdate" datasource="#request.reg_dsn#">
+				update patroncontact
+				set contactdata = '#form.newcontact#'
+				where patronid = '#ucase(form.pID)#'
+				and contacttype = '#form.type#'
+			</cfquery>
+		<cfelse>
+			<cfquery name="qUpdate" datasource="#request.reg_dsn#">
+			insert into patroncontact
+				(patronID,contacttype,contactdata)
+			values
+				(#pID#,'#form.type#','#form.newcontact#')
+			</cfquery>
+		</cfif>
+<CFIF trim(form.newcontact) NEQ "" AND findnocase("@",form.newcontact) GT 0>
+	<CFMAIL to="#form.newcontact#" bcc="webadmin@thprd.com" from="webadmin@thprd.com" subject="THPRD Online Registration: Account Modification">
+Hello,
+
+We just wanted to let you know that we have updated your contact information.
+The change was made #dateformat(now(),"dddd mmmm d, yyyy")# at #timeformat(now(),"hh:mm:ss tt")#.
+
+Thanks,
+THPRD Online Registration
+	</CFMAIL>
+</CFIF>
+		<cfset msg = "Contact Information Updated">
+	<table width="375" cellpadding=1 border=0 cellspacing="0" bgcolor="00000" align=center>
+	<tr>
+	<td valign=top>
+		<table width=100% border=0 cellpadding=2 cellspacing=0 bgcolor="0048d0">
+		<tr>
+		<td class="lgnhdr" align=center colspan=2><br><strong>Update Contact Information</strong><br><br></td>
+		</tr>
+		<tr>
+		<td rowspan=3><img src="../images/spacer.gif" width="30" height="130" border="0" alt=""></td>
+		<td valign=top width=100%>
+			<table border=0 cellpadding=1 cellspacing="0" width=100%>
+			<tr>
+			<td class="lgntext" valign="top" align="center">
+			<strong>#msg#</strong>
+				<br><br><br><a href="javascript:window.close();" class="lgntext">Close Window</a>&nbsp;&nbsp;&nbsp;<br><br>			
+			</td>
+			</tr>
+			</table>
+		</td>
+		<td rowspan=3><img src="../images/spacer.gif" width="15" height="130" border="0" alt=""></td>
+		</tr>
+		</table>
+	</td>
+	</tr>
+</table>	
+</cfif>
+</body>
+</cfoutput>
+
+</html>

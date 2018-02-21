@@ -1,0 +1,23 @@
+<!--- <cffunction name="IsInSession" output="Yes" returntype="numeric" access="public">
+	<cfargument name="_patronid" required="Yes">
+	<cfargument name="_SkipDropIn" required="No" default="0">
+	<cfquery datasource="#request.reg_dsn#" name="CheckForSession">
+		select coalesce(count(*),0) as tmp
+		from SESSIONPATRONS
+		where patronid = #_patronid#
+	</cfquery>	
+	<cfif _SkipDropIn is 0>
+		<cfquery datasource="#request.reg_dsn#" name="CheckForDropinSession">
+			select coalesce(count(*),0) as tmp
+			from SESSIONDROPIN
+			where patronid = #_patronid#
+		</cfquery>
+	</cfif>
+	<cfif _SkipDropIn is 1 and CheckForSession.tmp is 0>
+		<cfreturn 0>
+	<cfelseif CheckForSession.tmp is 0 and CheckForDropinSession.tmp is 0>
+		<cfreturn 0>
+	<cfelse>
+		<cfreturn 1>
+	</cfif>
+</cffunction> --->

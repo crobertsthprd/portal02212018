@@ -1,0 +1,236 @@
+<!---- OFFLINE --->
+<CFABORT>
+
+
+<cfif isdefined('form.subcat')>
+	<cfquery name="qGetSubCat" datasource="#request.reg_dsn#">
+		select description
+		from categoryb
+		where code = '#form.subcat#'
+	</cfquery>
+</cfif>
+<cfquery name="qGetCat" datasource="#request.reg_dsn#">
+	select description
+	from categorya
+	where code = '#form.cat#'
+</cfquery>
+
+<cfoutput><br>
+<cfset TableWidth = 600>
+<cfset TableBorderWidth = 0>
+<cfset bgcolor = "ededed">
+<cfparam name="startclass" default="1">
+<cfset endclass = startclass + 9>
+<cfif startclass eq 1>
+	<!--- query for classes --->
+	<cfinclude template="querycategory.cfm">
+	<cfset session.class_struct = structNew()>
+	<!--- <cfset session.class_struct.records = queryclasses> --->
+</cfif>
+<cfif isdefined('form.prevclasses')>
+	<cfset startclass = startclass - 20>
+	<cfset endclass = endclass - 20>
+</cfif>
+<cfif not isdefined('session.class_struct')>
+	<cflocation url="categories.cfm">
+	<cfabort>
+</cfif>
+
+<form name="showclasses" action="#cgi.script_name#" method="post">
+<TABLE border="0" WIDTH="590" cellpadding=1 cellspacing=0>
+<tr>
+<td class="greentext"><br><br><strong>#form.agecat#, 
+<cfif qGetCat.description is '--- None ---'>General<cfelse>#qGetCat.description#</cfif><cfif isdefined('form.subcat')>, <cfif qGetSubCat.description is '--- None ---'>General<cfelse>#qGetSubCat.description#</cfif></cfif><cfif isdefined('form.clevel')><cfset levellist = replacenocase(form.clevel,'%-','','all')><cfset levellist = replacenocase(levellist,'-%','','all')>, Level(s) - #levellist#</cfif>
+</strong>
+</td>
+<td align=right valign=top nowrap>&nbsp;&nbsp;<strong><cfif session.class_struct.records.recordcount gt 0><a href="classbasket.cfm" class="lgnmsg">Register</a>&nbsp;&nbsp;|&nbsp;&nbsp;<A HREF="javascript:void(window.open('mylist.cfm','classlist','width=650,height=300,statusbar=0,scrollbars=1,resizable=0'))" class="lgnmsg">My List</A>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="index.cfm" class="greentext">Search</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="javascript:alert('7 listings will print per page.');window.print();" class="greentext">Print</a>&nbsp;&nbsp;|</cfif>&nbsp;&nbsp;<A HREF="javascript:void(window.open('help.cfm?c=2','','width=518,height=355,statusbar=0,scrollbars=1,resizable=0'))" class="greentext"><strong>Help</strong></A>&nbsp;</td>
+</tr>
+
+<TR>
+<TD class="greentext" nowrap colspan=2>
+<strong><cfif session.class_struct.records.recordcount gt 0><cfif startclass gt 0 and startclass lt 10>0</cfif>#startclass#<cfelse>0</cfif>-<cfif endclass lte session.class_struct.records.recordcount>#endclass#<cfelse>#session.class_struct.records.recordcount#</cfif> of #session.class_struct.records.recordcount# Class<cfif session.class_struct.records.recordcount is 1><cfelse>es</cfif> Returned</strong> - (sorted by Class Name)
+<br><br>
+</TD>
+</TR>
+<cfset counter = 1>
+<cfset classoff = 'n'>
+<cfloop query="session.class_struct.records" startrow="#startclass#" endrow="#endclass#">
+<!--- get instructors for class --->
+<cfquery name="GetInstructorsForThisClass" datasource="#request.reg_dsn#">
+	SELECT   distinct Instructors.FirstName || ' ' || Instructors.LastName as InstructorName
+	FROM     InstructorSchedule InstructorSchedule
+			 LEFT OUTER JOIN Instructors Instructors
+			 ON InstructorSchedule.InstructorID=Instructors.InstructorID 
+	WHERE    InstructorSchedule.TermID = '#TermID#'
+	AND      InstructorSchedule.FacID = '#FacID#'
+	AND      InstructorSchedule.Activity = '#rtrim(ClassID)#'
+</cfquery>
+
+<cfquery datasource="#request.reg_dsn#" name="GetAllocated">
+	select coalesce(count(*),0) as tmp
+	from reg
+	WHERE    TermID = '#TermID#'
+	AND      FacID = '#FacID#'
+	AND      classid = '#rtrim(ClassID)#'
+	AND      regstatus = 'E'
+</cfquery>
+<cfquery datasource="#request.reg_dsn#" name="GetEWPClassAllocated">
+	select count(*) as Allocated
+	from Reg
+	where TermID = '#TermID#'
+	and FacID = '#FacID#'
+	and ClassID = '#ClassID#'
+	and RegStatus = 'E'
+	and ISSTANDBY = true
+	and RELINQUISHDT is null
+</cfquery>
+
+<cfquery datasource="#request.reg_dsn#" name="GetWaitList">
+	select coalesce(count(*),0) as tmp
+	from reg
+	WHERE    TermID = '#TermID#'
+	AND      FacID = '#FacID#'
+	AND      classid = '#rtrim(ClassID)#'
+	AND      regstatus in ('W')
+</cfquery>
+
+<cfquery datasource="#request.reg_dsn#" name="GetFacilityData">
+	select name, scmonths
+	from facilities
+	where facid = '#facid#'
+</cfquery>
+<cfquery datasource="#request.reg_dsn#" name="GetTermStart">
+	select allowweb, allowODdt
+	from terms
+	where termID = '#TermID#'
+	limit 1
+</cfquery>
+
+<cfset wdlist = "">
+<cfif SunCount greater than 0><cfset wdlist = listappend(wdlist,'Su')></cfif>
+<cfif MonCount greater than 0><cfset wdlist = listappend(wdlist,'M')></cfif>
+<cfif TueCount greater than 0><cfset wdlist = listappend(wdlist,'Tu')></cfif>
+<cfif WedCount greater than 0><cfset wdlist = listappend(wdlist,'W')></cfif>
+<cfif ThuCount greater than 0><cfset wdlist = listappend(wdlist,'Th')></cfif>
+<cfif FriCount greater than 0><cfset wdlist = listappend(wdlist,'F')></cfif>
+<cfif SatCount greater than 0><cfset wdlist = listappend(wdlist,'Sa')></cfif>
+<cfquery datasource="#request.reg_dsn#" name="GetStatusDesc">
+		select statusdesc
+		from classstatuscodes
+		where statuscode = '#status#'
+</cfquery>
+<!--- use to check if keywords are in class title --->
+<cfset newtitle = description>
+<cfif datecompare(startdt,now()) is -1>
+	<cfset classoff = 'y'>
+	<cfset classmsg = "Class Has Started">
+</cfif>
+<cfif GetStatusDesc.statusdesc is 'Canceled'>
+	<cfset classoff = 'y'>
+	<cfset classmsg = "Class Canceled">
+</cfif>
+<cfif getwaitlist.tmp gt 0>
+	<cfset classoff = 'y'>
+	<cfset classmsg = "Class Full">
+</cfif>
+<cfif cookie.ds is 'In District'>
+	<cfset regdate = gettermstart.allowweb>
+<cfelse>
+	<cfset regdate = gettermstart.allowODdt>
+</cfif>
+<cfif regdate gt now()>
+	<cfset classoff = 'y'>
+	<cfset classmsg = "Register #timeformat(regdate,'h:mm tt')#, #dateformat(regdate,'mm/dd/yyyy')#">
+</cfif>
+
+<tr bgcolor="#bgcolor#">
+<td class="lgnusr" nowrap valign=top><strong>#newtitle# / #classID#</strong>&nbsp;&nbsp;-&nbsp;&nbsp;#TermName#&nbsp;&nbsp;&nbsp;</td>
+<td class="bodytext" nowrap valign=top align=right>
+<cfif classoff is 'n'><!--- class available --->
+<strong><span class="greentext"><cfif listfindnocase(session.classlist,"'#classID#'") gt 0>Remove<cfelse>Add</cfif></span></strong>
+	<input type="checkbox" name="classlist" onClick="window.open('addclass.cfm?cID=#classID#&uniqueID=#uniqueID#','addclass','width=1, height=1, toolbar=no, scrollbars=no');" <cfif listfindnocase(session.classlist,"'#classID#'") gt 0>checked</cfif>>
+	<!--- <a href="javascript:void(0);" class="lgnusr" onClick="window.open('addclass.cfm?cID=#classID#','addclass','width=1, height=1, toolbar=no, scrollbars=no');"><img src="#request.webdir#/images/addclass.gif" alt="Add Class to List" title="Add Class to List" border=0></a>&nbsp;&nbsp;&nbsp;
+	<a href="javascript:void(0);" onClick="window.open('addclass.cfm?rID=#classID#','addclass','width=1, height=1, toolbar=no, scrollbars=no, resizable');"><img src="#request.webdir#/images/delclass.gif" alt="Remove Class from List" title="Remove Class from List" border=0></a> --->
+<cfelse><!--- class not available (full, started, cancelled) --->
+	<span class="redtext">#classmsg#</span>&nbsp;&nbsp;
+</cfif>
+</td>
+</tr>
+<tr bgcolor="#bgcolor#">
+<td class="bodytext" nowrap valign=top>#DateFormat(StartDT,"mmmm d, yyyy")#<cfif DateFormat(StartDT,"mmmm d, yyyy") is not DateFormat(EndDT,"mmmm d, yyyy")> - #DateFormat(EndDT,"mmmm d, yyyy")#</cfif>&nbsp;&nbsp;&nbsp;#TimeFormat(StartDT,"h:mmtt")# to #TimeFormat(EndDT,"h:mmtt")#<br>
+<strong>Day(s):</strong>&nbsp;&nbsp;<cfif wdlist is ''>N/A<cfelse>#wdlist#</cfif>&nbsp;&nbsp;&nbsp;<strong>Ages:</strong>&nbsp;&nbsp;#MonthsToYM(MinAgeMonths)# to #MonthsToYM(MaxAgeMonths)#</td>
+<td class="bodytext" nowrap valign=top><span class="lgnmsg">#GetFacilityData.name#</span><br>
+			<strong>Status:</strong>&nbsp;&nbsp;<cfif GetStatusDesc.statusdesc is not 'Active'> <span style="color:ff0000; font-weight:bold">#GetStatusDesc.statusdesc#</span><cfelse>#GetStatusDesc.statusdesc#</cfif>&nbsp;&nbsp;&nbsp;<strong>Enrolled:</strong>&nbsp;#GetAllocated.tmp - GetEWPClassAllocated.Allocated# / #MaxQty#&nbsp;&nbsp;&nbsp;&nbsp;<strong>Waitlisted:</strong>&nbsp;<cfif getwaitlist.tmp gt 0><span style="color:ff0000; font-weight:bold">#GetWaitList.tmp#</span><cfelse>#GetWaitList.tmp#</cfif>
+</td>
+</tr>
+<tr bgcolor="#bgcolor#">
+<td nowrap valign=top class="bodytext" colspan=2><strong>ID:</strong>&nbsp;<cfif MinAgeMonths lt GetFacilityData.scmonths>Regular ($#DecimalFormat(InDistRegFee)#)<cfif MaxAgeMonths gte GetFacilityData.scmonths>, </cfif></cfif><cfif MaxAgeMonths gte GetFacilityData.scmonths>Senior ($#DecimalFormat(InDistSenFee)#)</cfif><cfif decimalformat(iddeposit) gt 0>, Dep ($#decimalformat(iddeposit)#)</cfif><!---&nbsp; &nbsp;&nbsp;<strong>OD:</strong>&nbsp;<cfif MinAgeMonths lt GetFacilityData.scmonths>Regular ($#DecimalFormat(OutDistRegFee)#)<cfif MaxAgeMonths gte GetFacilityData.scmonths>, </cfif></cfif><cfif MaxAgeMonths gte GetFacilityData.scmonths>Senior ($#DecimalFormat(OutDistSenFee)#)</cfif><cfif decimalformat(oddeposit) gt 0>, Dep ($#decimalformat(oddeposit)#)</cfif> ---><cfif DecimalFormat(MiscFee) gt 0>&nbsp;-&nbsp;<strong>Misc. Fee</strong> ($#DecimalFormat(MiscFee)#)</cfif></td>
+</tr>
+<tr bgcolor="#bgcolor#">
+<td nowrap valign=top><strong>Instructor(s):</strong>&nbsp;&nbsp;<cfif listlen(GetInstructorsForThisClass.instructorname) gt 0>#valuelist(GetInstructorsForThisClass.instructorname)#<cfelse>N/A</cfif></td>
+<td nowrap valign=top><cfif classtext is not ''><A HREF="javascript:void(window.open('cdescription.cfm?cID=#uniqueID#','description','width=400,height=300,statusbar=0,scrollbars=1,resizable=0'))" class="greentext" >View Description</a></cfif><cfif classcomments is not '' and classtext is not ''>&nbsp;&nbsp;|&nbsp;&nbsp;</cfif><cfif classcomments is not ''><A HREF="javascript:void(window.open('ccomments.cfm?cID=#uniqueID#','comments','width=400,height=300,statusbar=0,scrollbars=1,resizable=0'))" class="greentext">View Comments</A></cfif>&nbsp;&nbsp;</td>
+</tr>
+<cfif counter eq 7>
+	<cfset counter = 1>
+	<tr>
+	<td colspan=2 class="printpage">&nbsp;</td>
+	</tr>
+<cfelse>
+	<tr>
+	<td colspan=2>&nbsp;</td>
+	</tr>
+	<cfset counter = counter + 1>
+</cfif>
+<cfif bgcolor is 'ededed'>
+	<cfset bgcolor = "ffffff">
+<cfelse>
+	<cfset bgcolor = "ededed">
+</cfif>
+<cfset classoff = 'n'>
+</cfloop>
+<CFIF session.class_struct.records.recordcount GT 0>
+<tr>
+<TD class="greentext" nowrap>
+<strong><cfif session.class_struct.records.recordcount gt 0><cfif startclass gt 0 and startclass lt 10>0</cfif>#startclass#<cfelse>0</cfif>-<cfif endclass lte session.class_struct.records.recordcount>#endclass#<cfelse>#session.class_struct.records.recordcount#</cfif> of #session.class_struct.records.recordcount# Class<cfif session.class_struct.records.recordcount is 1><cfelse>es</cfif> Returned</strong> - (sorted by Class Name)
+<br><br>
+</TD>
+<td align=right valign=top nowrap>&nbsp;&nbsp;<strong><cfif session.class_struct.records.recordcount gt 0><a href="classbasket.cfm" class="lgnmsg">Register</a>&nbsp;&nbsp;|&nbsp;&nbsp;<A HREF="javascript:void(window.open('mylist.cfm','classlist','width=650,height=300,statusbar=0,scrollbars=1,resizable=0'))" class="lgnmsg">My List</A>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="index.cfm" class="greentext">Search</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="javascript:alert('7 listings will print per page.');window.print();" class="greentext">Print</a>&nbsp;&nbsp;|</cfif>&nbsp;&nbsp;<A HREF="javascript:void(window.open('help.cfm?c=2','','width=518,height=355,statusbar=0,scrollbars=1,resizable=0'))" class="greentext"><strong>Help</strong></A>&nbsp;</td>
+</tr>
+</CFIF>
+<tr>
+<td colspan=2 align="right">
+<cfif startclass gt 1>
+<input type="submit" name="prevclasses" value="Previous 10 Classes" class="form_submit">
+</cfif>
+<cfif evaluate(session.class_struct.records.recordcount - endclass) gt 0>
+	<cfif endclass lte session.class_struct.records.recordcount>
+	<input type="submit" name="nextclasses" value="Next <cfif evaluate(session.class_struct.records.recordcount - 10) gt endclass>10<cfelse>#evaluate(session.class_struct.records.recordcount - endclass)#</cfif> Classes" class="form_submit">	
+	</cfif>
+</cfif>
+
+</td>
+</tr>
+</TABLE>
+<cfparam name="keywordlist" default="">
+<!--- <input type="hidden" name="getclasses" value="#form.getclasses#"> --->
+<input type="hidden" name="startclass" value="#evaluate(startclass + 10)#">
+<input type="hidden" name="endclass" value="#evaluate(endclass + 10)#">
+<input type="hidden" name="aID" value="#aID#">
+<input type="hidden" name="agecat" value="#form.agecat#">
+<input type="hidden" name="cat" value="#form.cat#">
+<cfif isdefined('form.subcat')>
+<input type="hidden" name="catname" value="#form.catname#">
+<input type="hidden" name="subcat" value="#form.subcat#">
+</cfif>
+<cfif isdefined('form.clevel')>
+<input type="hidden" name="clevel" value="#form.clevel#">
+</cfif>
+<cfif isdefined('form.levelchoice')>
+<input type="hidden" name="levelchoice" value="#form.levelchoice#">
+</cfif>
+<cfif isdefined('form.slevel')>
+<input type="hidden" name="slevel" value="#form.slevel#">
+</cfif>
+
+</form>
+</cfoutput>

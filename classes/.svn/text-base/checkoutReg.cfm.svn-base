@@ -1,0 +1,411 @@
+<!--- new registrations / conversions --->
+<!--- returns one row per registration --->
+<cfloop from="1" to="2" step="1" index="RegProcLoop">
+
+	<cfif RegProcLoop is 1>
+
+		<cfquery datasource="#dopsds#" name="ProcessReg">
+			SELECT   reg.termid, reg.facid, reg.classid, reghistory.depositonly,
+			         REGHISTORY.RegID, REGHISTORY.amount, REGHISTORY.action, 
+			         REG.patronid, REGHISTORY.ec, reg.deferredpaid, reg.sessionid as sessionid1,
+			         reg.deferred, reg.overridden, reg.IsBeingConverted, reghistory.primarypatronid,
+			         reg.isstandby
+			FROM     reghistory REGHISTORY
+			         INNER JOIN reg REG ON REGHISTORY.primarypatronid=REG.primarypatronid AND REGHISTORY.RegID=REG.RegID
+			where    SessionID = '#CurrentSessionID#'
+			and      reghistory.IsMiscFee = false
+			and      reghistory.voided = false
+		</cfquery>
+		
+		<cfif (IsDefined("NewRegCount") and ProcessReg.recordcount is not NewRegCount) or 1 is 11>
+			<cftransaction action="ROLLBACK">
+			<!--- changes detected due to EWP/other session drop --->
+			<BR><BR>
+			<cfoutput>
+			#ProcessReg.recordcount# new registrations were detected while #NewRegCount# were expected.
+			Go back and try again
+			</cfoutput>
+			<BR><BR><a href="javascript:history.back();">Go Back</a>
+			<cfabort>
+		</cfif>
+
+		<cfset ThisIsBeingConverted = 0>
+	<cfelse>
+		<!--- registration conversions --->
+		<cfquery datasource="#dopsds#" name="ProcessReg">
+			SELECT   SESSIONREGCONVERT.*, REG.* 
+			FROM     sessionregconvert SESSIONREGCONVERT
+			         INNER JOIN reg REG ON SESSIONREGCONVERT.primarypatronid=REG.primarypatronid AND SESSIONREGCONVERT.regid=REG.regid
+			where    sessionregconvert.SessionID = '#CurrentSessionID#'
+		</cfquery>
+
+		<cfset ThisIsBeingConverted = 1>
+
+		<cfif ProcessReg.recordcount gt 0>
+			<BR><BR><strong>Error occured during final processing. Go back and try again.</strong>
+			<BR><BR><a href="javascript:history.back();">Go Back</a>
+			<cfabort>
+		</cfif>
+
+	</cfif>
+
+	<cfif ProcessReg.RecordCount greater than 0>
+		<cfset KeepThisInvoice = 1>
+	
+		<cfloop query="ProcessReg">
+			<!--- <cfset converttodefer = 0>
+			<cfset converttodeposit = 0> --->
+	
+			<cfquery name="UpdateLastUse" datasource="#dopsds#">
+				update patrons
+				set
+					lastuse = current_date
+				where patronid = #patronid#
+			</cfquery>
+	
+			<cfif IsBeingConverted is 0 and (action is "W" or action is "A")><!---  or sessionid1 is not "" --->
+	
+				<cfif action is "W" or action is "E">
+					<cfset ActivityLine = ActivityLine + 1>
+
+					<cfquery datasource="#dopsds#" name="AddToActivity">
+						insert into Activity
+							(TermID,FacID,Activity,ActivityCode,PatronID,InvoiceFacID,InvoiceNumber,
+							line,EC,primarypatronid,regid)
+						values
+							('#TermID#','#FacID#','#ClassID#','WL',#PatronID#,'#LocalFac#',#NextInvoice#,
+							#ActivityLine#,#EC#,#primarypatronid#,#regid#)
+					</cfquery>
+
+					<cfset FoundNew = 1>
+				</cfif>
+		
+			<cfelse>
+	
+				<cfif IsBeingConverted is 1>
+					<!--- <cfset FoundConv = 1>
+
+					<!--- converting existing registration --->
+					<cfquery name="ClearSetFlags" datasource="#dopsds#">
+						update reg
+						set
+							IsBeingConverted = false,
+							WasConverted = true,
+							regstatus = 'E'
+							<cfif deferred is 1>,deferredpaid = true<cfelseif depositonly is 1>,balancepaid = true</cfif>
+						where  RegID = #RegID#
+						and    PrimaryPatronID = #PrimaryPatronID#
+					</cfquery>
+
+					<!--- added GetDepositStatus to check which amount to use for GL used in next 2 queries 05/06/04 --->
+					<cfquery datasource="#dopsds#" name="GetDepositStatus">
+						select   converttodeposit
+						from     SessionRegConvert
+						where    RegID = #RegID#
+						and      PrimaryPatronID = #PrimaryPatronID#
+					</cfquery>
+
+					<cfquery datasource="#dopsds#" name="GetClassCost">
+						select   <cfif GetDepositStatus.converttodeposit is 0>classcost<cfelse>depositamount</cfif> as amount
+						from     SessionRegConvert
+						where    RegID = #RegID#
+						and      PrimaryPatronID = #PrimaryPatronID#
+					</cfquery>
+		
+					<cfquery datasource="#dopsds#" name="GetMiscFee">
+						select   <cfif GetDepositStatus.converttodeposit is 0>miscfee<cfelse>0</cfif> as amount
+						from     SessionRegConvert
+						where    RegID = #RegID#
+						and      PrimaryPatronID = #PrimaryPatronID#
+					</cfquery>
+		
+					<cfquery datasource="#dopsds#" name="GetConvertEC">
+						select   costec, miscec
+						from     SessionRegConvert
+						where    RegID = #RegID#
+						and      PrimaryPatronID = #PrimaryPatronID#
+					</cfquery>
+
+					<cfset costec = GetConvertEC.costec>
+					<cfset miscec = GetConvertEC.miscec> --->
+				<cfelse>
+					<!--- new registration --->
+					<cfset costec = ec>
+					<cfset miscec = costec + 1>
+		
+					<cfquery datasource="#dopsds#" name="GetClassCost">
+						select   coalesce(amount,0) as amount
+						from     reghistory
+						where    RegID = #RegID#
+						and      PrimaryPatronID = #PrimaryPatronID#
+						and      action = 'E'
+						and      IsMiscFee = false
+					</cfquery>
+				
+					<cfquery datasource="#dopsds#" name="GetMiscFee">
+						select   coalesce(sum(amount),0) as amount
+						from     reghistory
+						where    RegID = #RegID#
+						and      PrimaryPatronID = #PrimaryPatronID#
+						and      action = 'E'
+						and      IsMiscFee = true
+					</cfquery>
+				
+					<cfquery datasource="#dopsds#" name="GetDeposit">
+						select   coalesce(sum(amount),0) as amount
+						from     reghistory
+						where    RegID = #RegID#
+						and      PrimaryPatronID = #PrimaryPatronID#
+						and      action = 'E'
+						and      depositbalpaid = true
+					</cfquery>
+		
+				</cfif>
+
+				<!--- history entries --->
+				<cfif ThisIsBeingConverted is 0>
+					<cfset action1 = action>
+					<cfset activity1 = "CE">
+					<cfset FoundNew = 1>
+				<cfelseif ThisIsBeingConverted is 1 and ProcessReg.IsDefer is 1>
+					<cfset action1 = "E">
+					<cfset activity1 = "PF">
+				<cfelseif ThisIsBeingConverted is 1 and ProcessReg.IsDeposit is 1>
+					<cfset action1 = "E">
+					<cfset activity1 = "PB">
+				<cfelseif ThisIsBeingConverted is 1 and ProcessReg.IsWL is 1>
+					<cfset action1 = "E">
+					<cfset activity1 = "CWL">
+				<cfelse>
+					<BR>Cannot determine activity. Go back and try again.
+					<cftransaction action="ROLLBACK">
+					<BR><BR><a href="javascript:history.back();">Go Back</a>
+					<cfabort>
+				</cfif>
+		
+				<!--- <cfif ThisIsBeingConverted is 1>
+		
+					<cfquery datasource="#dopsds#" name="UpdateRegEntry">
+						update reg
+						set
+							regstatus = 'E',
+							IsBeingConverted = false,
+							deferred = <cfif ProcessReg.converttodefer is 1>true<cfelse>false</cfif>,
+							deferredpaid = <cfif ProcessReg.IsDefer is 1>true<cfelse>false</cfif>,
+							feebalance = #ProcessReg.BalanceDue#,
+							DepositOnly = <cfif ProcessReg.converttodeposit is 1>true<cfelse>false</cfif>,
+							BalancePaid = <cfif ProcessReg.IsDeposit is 1>true<cfelse>false</cfif>
+						where  primarypatronid = #primarypatronid#
+						and    RegID = #RegID#
+						;
+						update reghistory
+						set
+							pending = false
+						where  primarypatronid = #primarypatronid#
+						and    regid = #regid#
+						;
+						insert into reghistory
+							(action,invoicefacid,invoicenumber,ec,primarypatronid,
+							regid,finished,
+							amount,balance,
+							Deferred,
+							deferredpaid,
+							depositonly,
+							wasconverted,
+							pending,
+							comment,
+							depositbalpaid,
+							userid)
+						values
+							('#action1#','#LocalFac#',#NextInvoice#,#GetConvertEC.costec#,#PrimaryPatronID#,
+							#RegID#,true,
+							<cfif ProcessReg.converttodefer is 1>0<cfelseif ProcessReg.converttodeposit is 1>#ProcessReg.DepositAmount#<cfelse>#GetClassCost.amount#</cfif>,#ProcessReg.balancedue#,
+							<cfif ProcessReg.converttodefer is 1>true<cfelse>false</cfif>,
+							<cfif activity1 is "PF">true<cfelse>false</cfif>,
+							<cfif ProcessReg.converttodeposit is 1>true<cfelse>false</cfif>,
+							true,
+							<cfif ProcessReg.converttodeposit is 1 or ProcessReg.converttodefer is 1>true<cfelse>false</cfif>,
+							<cfif ProcessReg.comment is not "">'#Replace(ProcessReg.comment,"'","''","all")#'<cfelse>null</cfif>,
+							<cfif activity1 is "PB">true<cfelse>false</cfif>,
+							#huserid#)
+						;
+		
+						<cfif ProcessReg.CostAdj is not 0>
+							insert into Adjustments
+								(EC,Adjustment,AdjustmentCode,primarypatronid,invoicefacid,InvoiceNumber, comments)
+							values
+								(#ProcessReg.CostEC#,#ProcessReg.CostAdj#,#ProcessReg.AdjustmentCode#,#primarypatronid#,'#LocalFac#',#NextInvoice#,'#adjustreason#')
+							;
+						</cfif>
+	
+						<cfif ProcessReg.MiscAdj is not 0>
+							insert into Adjustments
+								(EC,Adjustment,AdjustmentCode,primarypatronid,invoicefacid,InvoiceNumber,IsMiscFee, comments)
+							values
+								(#ProcessReg.MiscEC#,#ProcessReg.MiscAdj#,#ProcessReg.AdjustmentCode#,#primarypatronid#,'#LocalFac#',#NextInvoice#,true,'#adjustreason#')
+							;
+						</cfif>
+
+					</cfquery>
+	
+				</cfif> --->
+		
+				<cfset ActivityLine = ActivityLine + 1>
+		
+				<cfquery datasource="#dopsds#" name="AddToActivity">
+					insert into Activity
+						(TermID,FacID,Activity,ActivityCode,PatronID,InvoiceFacID,InvoiceNumber,
+						Debit,
+						line,EC,primarypatronid,regid,
+						overridden,
+						deferred,
+						DepositOnly,
+						isstandby)
+					values
+						('#TermID#','#FacID#','#ClassID#','#activity1#',#PatronID#,'#LocalFac#',#NextInvoice#,
+						<cfif IsDefined("ProcessReg.converttodefer") and ProcessReg.converttodefer is 1>0<cfelse>#GetClassCost.amount#</cfif>,
+						#ActivityLine#,<cfif IsDefined("ProcessReg.converttodefer") and ProcessReg.converttodefer is 1>0<cfelse>#costec#</cfif>,#primarypatronid#,#regid#,
+						<cfif overridden is 1>true<cfelse>false</cfif>,
+						<cfif (deferred is 1 and ThisIsBeingConverted is 0) or (IsDefined("ProcessReg.converttodefer") and ProcessReg.converttodefer is 1)>true<cfelse>false</cfif>,
+						<cfif (IsDefined("ProcessReg.converttodposit") and ProcessReg.converttodeposit is 1 or DepositOnly is 1)><cfif activity1 is "PB">false<cfelse>true</cfif><cfelse>false</cfif>,
+						<cfif isstandby is 1>true<cfelse>false</cfif>)
+				</cfquery>
+		
+				<!--- count misc fee rows for deferred entries --->
+				<cfquery datasource="#dopsds#" name="CountMiscFeeRows">
+					select   coalesce(count(*),0) as cnt
+					from     reghistory
+					where    RegID = #RegID#
+					and      PrimaryPatronID = #PrimaryPatronID#
+					and      action = 'E'
+					and      IsMiscFee = true
+				</cfquery>
+		
+				<!--- misc fee if present --->
+				<cfif GetMiscFee.amount is not 0 or CountMiscFeeRows.cnt is not 0>
+
+					<!--- <cfif ThisIsBeingConverted is 1>
+						<!--- insert 0 for amount and balance for misc fee --->
+						<cfquery datasource="#dopsds#" name="InsertIntoHistory">
+							insert into reghistory
+								(action,invoicefacid,invoicenumber,ec,primarypatronid,
+								regid,finished,amount,balance,
+								Deferred,
+								deferredpaid,
+								depositonly,
+								IsMiscFee,
+								wasconverted,
+								pending,
+								depositbalpaid,
+								userid)
+							values
+								('#action1#','#LocalFac#',#NextInvoice#,#GetConvertEC.miscec#,#PrimaryPatronID#,
+								#RegID#,true,<cfif ProcessReg.converttodefer is 1>0<cfelseif ProcessReg.converttodeposit is 1>0<cfelse>#GetMiscFee.amount#</cfif>,0,
+								<cfif ProcessReg.converttodefer is 1>true<cfelse>false</cfif>,
+								<cfif activity1 is "PF">true<cfelse>false</cfif>,
+								<cfif ProcessReg.converttodeposit is 1>true<cfelse>false</cfif>,
+								true,
+								true,
+								<cfif ProcessReg.converttodeposit is 1 or ProcessReg.converttodefer is 1>true<cfelse>false</cfif>,
+								<cfif activity1 is "PB">true<cfelse>false</cfif>,
+								#huserid#)
+						</cfquery>
+		
+					</cfif> --->
+		
+					<cfset ActivityLine = ActivityLine + 1>
+		
+					<cfquery datasource="#dopsds#" name="AddToActivity">
+						insert into Activity
+							(TermID,FacID,Activity,
+							ActivityCode,PatronID,
+							InvoiceFacID,InvoiceNumber,
+							Debit,
+							line,EC,
+							primarypatronid,regid,IsMiscFee,
+							overridden,
+							deferred)
+						values
+							('#TermID#','#FacID#','#ClassID#',
+							'#activity1#M',#PatronID#,
+							'#LocalFac#',#NextInvoice#,
+							<cfif IsDefined("ProcessReg.converttodefer") and ProcessReg.converttodefer is 1>0<cfelse>#GetMiscFee.amount#</cfif>,
+							#ActivityLine#,<cfif IsDefined("ProcessReg.converttodefer") and ProcessReg.converttodefer is 1>0<cfelse>#miscec#</cfif>,
+							#primarypatronid#,#regid#,true,
+							<cfif overridden is 1>true<cfelse>false</cfif>,
+							<cfif (deferred is 1 and ThisIsBeingConverted is 0) or (IsDefined("ProcessReg.converttodefer") and ProcessReg.converttodefer is 1)>true<cfelse>false</cfif>)
+					</cfquery>
+		
+				</cfif>
+	
+				<cfquery datasource="#dopsds#" name="GetClassData">
+					SELECT   CLASSES.glacctid, CLASSES.glmiscacctid 
+					FROM     reg REG
+					         INNER JOIN classes CLASSES ON REG.termid=CLASSES.termid AND REG.facid=CLASSES.facid AND REG.classid=CLASSES.classid
+					WHERE    reg.primarypatronid = #primarypatronid#
+					AND      reg.regid = #regid#
+				</cfquery>
+
+				<cfif GetClassCost.amount greater than 0>
+					<cfset GLLineNo = GLLineNo + 1>
+			
+					<cfquery datasource="#dopsds#" name="InsertClassGL2">
+						insert into GL
+							(Credit,AcctID,InvoiceFacID,InvoiceNumber,EntryLine,ec,activitytype,activity)
+						values
+							(#GetClassCost.amount#,#GetClassData.GLAcctID#,'#LocalFac#',#NextInvoice#,#GLLineNo#,#costec#,'R','#TermID#-#FacID#-#ClassID#')
+					</cfquery>
+		
+				</cfif>
+		
+				<cfif GetMiscFee.amount greater than 0>
+					<cfset GLLineNo = GLLineNo + 1>
+			
+					<cfquery datasource="#dopsds#" name="InsertClassMiscGL2">
+						insert into GL
+							(Credit,AcctID,InvoiceFacID,InvoiceNumber,EntryLine,ec,activitytype,activity)
+						values
+							(#GetMiscFee.amount#,#GetClassData.GLMiscAcctID#,'#LocalFac#',#NextInvoice#,#GLLineNo#,#miscec#,'R','#TermID#-#FacID#-#ClassID#')
+					</cfquery>
+		
+				</cfif>
+		
+			</cfif>
+	
+		</cfloop>
+	
+		<cfquery datasource="#dopsds#" name="UpdateRegEntry2">
+			update  reg
+			set
+				SessionID = null
+			where   primarypatronid = #primarypatronid#
+			and     SessionID = '#CurrentSessionID#'
+			;
+			update reghistory
+			set
+				amount = 0
+			where   primarypatronid = #primarypatronid#
+			and     finished = false
+			and     action = 'F'
+			;
+			update  reghistory
+			set
+				INVOICEFACID = '#LocalFac#',
+				INVOICENUMBER = #NextInvoice#,
+				finished = true
+			where   primarypatronid = #primarypatronid#
+			and     invoicenumber is null
+		</cfquery>
+	
+		<cfif RegProcLoop is 2>
+
+			<cfquery datasource="#dopsds#" name="DeleteConvertSession">
+				delete  from sessionregconvert
+				where   sessionid = '#CurrentSessionID#'
+			</cfquery>
+
+		</cfif>
+	
+	</cfif>
+
+</cfloop>

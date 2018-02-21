@@ -1,0 +1,52 @@
+<cfquery name="csGetFacilities" datasource="dopsdsro" cachedwithin="#CreateTimeSpan(1,0,0,0)#">
+	select   facid, name
+	from     facilities
+	where    ShowInReg = true
+	and      facid != 'WWW'
+	ORDER BY name
+</cfquery>
+
+<!--- fetch only instructors scheduled for open terms --->
+<cfquery datasource="#dopsds#ro" name="csGetInstructors" cachedwithin="#CreateTimeSpan(0,6,0,0)#">
+	SELECT   instructorschedule.instructorid, instructors.firstname || ' ' || instructors.lastname as name
+	FROM     instructorschedule 
+	         INNER JOIN locationschedule locationschedule ON instructorschedule.termid=locationschedule.termid AND instructorschedule.facid=locationschedule.facid AND instructorschedule.activity=locationschedule.activity
+	         INNER JOIN instructors instructors ON instructorschedule.instructorid=instructors.instructorid 
+	WHERE    instructorschedule.startdt >= now() 
+	AND      instructors.lastname != 'Staff'
+	AND      instructors.firstname != 'Staff'
+	GROUP BY instructorschedule.instructorid, instructors.firstname || ' ' || instructors.lastname
+	ORDER BY instructors.firstname || ' ' || instructors.lastname
+</cfquery>
+
+<cfquery datasource="#dopsds#ro" name="csGetLastTerm" cachedwithin="#CreateTimeSpan(0,1,0,0)#">
+	SELECT   termid
+	FROM     terms
+	WHERE    enddt > now()
+	ORDER BY termid
+	limit    1
+</cfquery>
+
+<cfquery datasource="#dopsds#ro" name="csGetAllAvailTerms" cachedwithin="#CreateTimeSpan(0,1,0,0)#">
+	SELECT   distinct termid, termname, startdt, enddt
+	FROM     terms
+	WHERE    termid >= '#csGetLastTerm.termid#'
+	ORDER BY termid 
+	limit    2
+</cfquery>
+
+<cfquery  dbtype="query" name="termlistreorder">
+	SELECT   * 
+	FROM     csGetAllAvailTerms
+	ORDER BY termid desc
+</cfquery>
+
+
+<cfquery datasource="#dopsds#ro" name="GetPatrons">
+	select   secondarypatronid, patrons.lastname, patrons.firstname, patrons.dob, relationtype,
+	         instrlevela, instrlevelt
+	from     patronrelations
+	         inner join patrons on secondarypatronid=patrons.patronid
+	where    primarypatronid = #cookie.uID#
+	order by patrons.firstname
+</cfquery>

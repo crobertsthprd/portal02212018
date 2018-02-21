@@ -1,0 +1,699 @@
+<!--- when a gift card is applied one of the following occurs:
+
+1) giftcard pays for only part of the balance
+2) giftcard pays entire balance
+
+--->
+
+
+<!--- ALL VARIABLES SHOULD BE SCOPED!!!!!!! I don't understand why they are not. (CR) --->
+
+<!--- query to get registered cards --->
+<cfset tc = gettickcount()>
+<cfset primarypatronid = cookie.uID>
+<cfset CurrentSessionID = GetSessionID(primarypatronid)>
+
+<cfif not IsDefined("checkout")>
+	<cfinclude template="classescommon.cfm">
+</cfif>
+
+<cfquery datasource="#dopsds#ro" name="Get4NewRegistrations">
+	SELECT   exists(
+	         select   termid
+	         FROM     reg
+	         WHERE    reg.SessionID = '#CurrentSessionID#') as tmp
+</cfquery>
+
+<cfif IsDefined("checkout")>
+
+	<cfif Get4NewRegistrations.tmp is 0>
+		<BR><BR><strong>No new registrations found to process.</strong>
+		<cfabort>
+	</cfif>
+
+</cfif>
+
+
+<CFSILENT>
+
+<cfif not IsDefined("getCards")>
+
+	<cfquery datasource="#dopsds#ro" name="getCards">
+		select   s.sumnet, s.isfa, s.othercreditdata, s.cardid <!--- added cardid for FA check --->  
+		from     othercredithistorysums s
+		where    s.primarypatronid = #cookie.uid#
+		and      s.activated is true
+		and      s.valid is true
+		order by s.cardid
+	</cfquery>
+
+</cfif>
+
+<CFIF Isdefined("pickgiftcard")>
+	<CFSET thecardnumber = trim(form.unreg_gc1) & trim(form.unreg_gc2) & trim(form.unreg_gc3) & trim(form.unreg_gc4)>
+	<!--- do the look up; get balance and create display info --->
+
+	<CFIF Isnumeric(thecardnumber) and len(thecardnumber) EQ 16>
+		<cf_cryp type="en" string="#thecardnumber#" key="#skey#">
+
+		<cfquery name="getSelectedCard" dbtype="query">
+			select   *
+			from     getCards
+			where    othercreditdata = '#cryp.value#'
+		</cfquery>
+
+		<cfset TrueBalance = getSelectedCard.sumnet>
+
+		<cfif IsNumeric(MaxGCAmount) and getSelectedCard.recordcount is 1>
+			<cfset QuerySetCell(getSelectedCard, "sumnet", min(MaxGCAmount, getSelectedCard.sumnet))>
+		</cfif>
+
+		<!--- determine family assistance --->
+		<CFIF getSelectedCard.isfa IS true>
+
+			<cfquery datasource="#dopsds#ro" name="GetRegFeeFAMethod" cachedwithin="#CreateTimeSpan(1,0,0,0)#">
+			 select   varvalue
+			 from     systemvars
+			 where    varname = 'FamilyAssistanceMembersOnlyReg'
+			</cfquery>
+			<CFIF ucase(GetRegFeeFAMethod.varvalue) EQ "YES" OR ucase(GetRegFeeFAMethod.varvalue) EQ "YES">
+				<CFSET enforceFAmembercheck = true>
+			<CFELSE>
+				<CFSET enforceFAmembercheck = false>
+			</CFIF>	
+
+		</CFIF>
+		<!--- check to see if we are allowing FA cards --->
+		<cfquery datasource="#dopsds#ro" name="GetWebStatus" cachedwithin="#CreateTimeSpan(1,0,0,0)#">
+			 select   varvalue
+			 from     systemvars
+			 where    varname = 'FamilyAssistanceAllowOnWeb'
+		</cfquery>
+
+		<CFIF ucase(GetWebStatus.varvalue) EQ "YES" OR ucase(GetWebStatus.varvalue) EQ "YES">
+			<CFSET allowWebFA = true>
+			
+			<!--- check for type of FA application --->
+			<!--- temporary disabling: will be implimented later --->
+			<cfquery datasource="#dopsdsro#" name="GetAppType">
+				SELECT   apptype 
+				FROM     faapps 
+				WHERE    current_date between eligibledate and expiredate 
+				AND      cardidtoload = #getSelectedCard.cardid#
+				AND      status = 'G' 
+				AND      primarypatronid = #cookie.uid#
+				limit    1
+			</cfquery>
+
+			<cfif GetAppType.recordcount is 0><!--- not found --->
+				<CFSET allowWebFA = false>
+			<cfelseif GetAppType.apptype gt 1><!--- wrong type --->
+				<CFSET allowWebFA = false>
+			</cfif>
+			<!--- end check for type of FA application --->
+		<CFELSE>
+			<CFSET allowWebFA = false>
+		</CFIF>	
+		
+		<!--- if enforceFAmembercheck is true; loop through selections/participants to get card max --->
+		
+		<CFIF getSelectedCard.recordcount EQ 0>
+			<CFSET selectcardmessageerror = "Selected card does not exist, is no longer valid, or may have a balance of zero. Please use a different gift card. The number you entered was: #thecardnumber#.">
+		<CFELSEIF getSelectedCard.recordcount EQ 1 AND getSelectedCard.isfa IS true AND allowWebFA IS false>
+			<CFSET selectcardmessageerror = "To use your family assistance card please call the registration hotline or, during regular office hours, the administration office.">
+		<CFELSEIF getSelectedCard.recordcount EQ 1>
+			<!--- set details --->
+			<CFSET theselectedcard = thecardnumber>
+			<CFSET theselectedcardbalance = getSelectedCard.sumnet>
+			<CFSET theselectedcardFA = getSelectedCard.isfa>
+		<CFELSE>
+			<CFSET selectcardmessageerror = "There was a error looking up your card. Please contact Administration. The number you entered was: #thecardnumber#.">
+		</CFIF>	
+	<CFELSE>
+		<CFSET selectcardmessageerror = "Gift Card number should contain 16 digits. The card number you entered is not in the correct format. The number you entered was: #thecardnumber#.">
+	</CFIF>
+
+</CFIF>
+
+<cfset localfac = "WWW">
+<cfset localnode = "W1">
+<cfset DS = "#request.reg_dsn#">
+<cfset pid = cookie.uID>
+<cfset GLLineNo = 0>
+<cfset ShowCurrentReg = 0><!--- set to 0 to suppress showing current regs --->
+
+<!--- toggle vars to show msg do ease in formatting --->
+<cfset ShowInSession = 0>
+<cfset ShowDeleteConfirm = 0>
+<cfset ShowCancelled = 0>
+<cfset ShowAlreadyEnrolled = 0>
+<cfset ShowNoAssmt = 0>
+<cfset ShowWaitList = 0>
+<cfset ShowError = 0>
+<cfset ShowNonExistanceError = 0>
+<cfset ShowNoRecords = 0>
+<cfset ShowNoClasses = 0>
+<cfset ShowNoActions = 0>
+<cfset ShowNotAvail = 0>
+<!--- end --->
+
+<cfif IsDefined("cont1")>
+	<!--- call class selection loading page --->
+	<cflocation url="index.cfm">
+	<cfabort>
+</cfif>
+
+
+
+<!--- <CFINCLUDE template="/portalINC/invoice_functions.cfm"> --->
+<CFINCLUDE template="/portalINC/familyassistance_functions.cfm">
+
+<cfquery datasource="#dopsds#ro" name="GetPrimary">
+	SELECT   patrons.lastname, patrons.firstname, patrons.middlename, patronRelations.verifyexpiration,
+	         patrons.DOB, PatronAddresses.address1, 
+	         PatronAddresses.address2, PatronAddresses.city, patrons.patronid, patrons.insufficientid,
+	         PatronAddresses.state, PatronAddresses.zip, PatronRelations.RelationType,
+	         PatronRelations.InDistrict, patrons.patronlookup, patrons.verified, patrons.inactive, patrons.gender, patrons.admcomments
+	FROM     PatronRelations PatronRelations
+	         INNER JOIN patrons patrons ON PatronRelations.PrimaryPatronid=patrons.PatronID
+	         LEFT OUTER JOIN PatronAddresses PatronAddresses ON PatronRelations.AddressID=PatronAddresses.AddressID
+	where    patronRelations.PrimaryPatronid = #pid#
+	and      patronRelations.SecondaryPatronid = #pid#
+	and      patrons.inactive = false
+</cfquery>
+
+<cfset InDistrictStatus = 1>
+
+<cfif GetPrimary.insufficientid is 1 or GetPrimary.InDistrict is 0>
+	<cfset InDistrictStatus = 0>
+</cfif>
+
+</cfsilent>
+
+
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<title>Tualatin Hills Park & Recreation District</title>
+
+<SCRIPT language="javascript">
+function fillcc() {
+	//alert(document.class_sum.registeredcard.options[document.class_sum.registeredcard.options.selectedIndex].value);
+	theccnum = document.class_sum.registeredcard.options[document.class_sum.registeredcard.options.selectedIndex].value;
+	if (theccnum != "None") {
+	c1 = theccnum.substring(0,4);
+	c2 = theccnum.substring(4,8);
+	c3 = theccnum.substring(8,12);
+	c4 = theccnum.substring(12,16);
+	document.class_sum.unreg_gc1.value = c1;
+	document.class_sum.unreg_gc2.value = c2;
+	document.class_sum.unreg_gc3.value = c3;
+	document.class_sum.unreg_gc4.value = c4;
+	}
+	else {
+	document.class_sum.unreg_gc1.value = "";
+	document.class_sum.unreg_gc2.value = "";
+	document.class_sum.unreg_gc3.value = "";
+	document.class_sum.unreg_gc4.value = "";	
+	}
+}
+</SCRIPT>
+
+</head>
+<body bgcolor="ffffff" topmargin="0" leftmargin="0" marginheight="0" marginwidth="0">
+<cfoutput>
+<table border="0" cellpadding="0" cellspacing="0" width="750">
+  
+  <!--- <cfinclude template="#request.includes#/top_nav.cfm"> --->
+	<tr>
+		<td valign=top>
+			<table border=0 cellpadding=2 cellspacing=0 width=749>
+				<tr>
+					<td colspan=3 class="pghdr">
+					<!--- start header --->
+					<CFINCLUDE template="/portalINC/dsp_header.cfm">
+					
+					<!--- end header --->
+					</td>
+				</tr>
+				<tr>
+					<td valign=top>
+						<table border=0 cellpadding=2 cellspacing=0>
+							<tr>
+								<td><img src="/siteimages/spacer.gif" width="130" height="1" border="0" alt=""></td>
+							</tr>
+							<tr>
+								<td valign=top nowrap class="lgnusr"><br>
+								<!--- start nav --->
+								<cfinclude template="/portalINC/admin_nav_classes.cfm">
+								<!--- end nav --->
+								</td>
+							</tr>		
+						</table>		
+					</td>
+					<td valign=top colspan=2 class="bodytext" align=left>
+					<!--- START CLASS CONTENT --->
+
+<cfif IsInSession(pid) is 1 or ShowInSession is 1>
+	<table width=600 border=0 cellpadding="1" cellspacing=0>
+	<tr>
+	<td class="pghdr" colspan=2><br>Class Registration - Checkout</td>
+	</tr>
+	<tr>
+	<td><img src="../images/spacer.gif" width=1 height=300></td>
+	<td class="bodytext_red" align=center valign=top><br><br><br><br><br>
+		This account is currently being used at a facility or by phone. 
+		<br>Please wait until finished and try again.<BR>
+		<input type="Button" class="form_submit" onClick="history.back()" value="Return to Class Listings">
+	</td>
+	</tr>
+	</table>
+	
+	</td>
+	</tr>
+	</table>
+	
+	</td>
+	</tr>
+	<cfinclude template="/portalINC/footer.cfm">
+	</table>
+	</body>
+	</html>
+	<cfabort>
+</cfif>
+
+
+<!--- check credit card, if applcable --->
+<cfif isDefined("checkout") and netdue-giftcarddebitamount gt 0 and IsDefined("refpolicy")>
+	<cfset ccnum = ccnum1 & ccnum2 & ccnum3 & ccnum4>
+	<cfset ccExp = ccExpMonth & right(ccExpYear, 2)>
+
+	<cfif ccNum is "" or ccExp is "" or (not IsNumeric(ccv)) or len(ltrim(rtrim(ccv))) is not 3 or len(ltrim(rtrim(ccExp))) lt 4>
+		<BR><BR><strong>Missing or invalid information for credit card was detected: </strong>
+		<cfif ccNum is ""><BR><BR>Missing card data</cfif>
+		<cfif ccExp is ""><BR><BR>Missing exp date</cfif>
+		<cfif not IsNumeric(ccv) or len(ltrim(rtrim(ccv))) is not 3><BR><BR>CCV incorrect</cfif>
+		<cfif len(ltrim(rtrim(ccExp))) lt 4><BR><BR>Expiration Date incorrect</cfif>
+		<BR><BR>
+		<input type="Button" class="GoButton" onClick="history.back()" value="Go Back" style="width: 200px;">
+		<cfabort>
+	</cfif>
+	
+	<!--- encrypt CC data if used --->
+	<cfset ccExp = REPLACE(ccExp," ","","ALL")>
+	<cfset ccExp = REREPLACE(ccExp,"[^0-9]","","ALL")>
+	<cfset ccExp = left(ccExp,2) & "/" & right(ccExp,2)>
+	<!--- check card type and number for validity --->
+	<CF_mod10 ccType = "#ccType#" ccNum="#ccNum#" ccExp="#ccExp#">
+	
+	<cfif valid is 0>
+		<BR><BR>
+		<strong>The Credit Card data supplied is not valid. Please try again.</strong><BR>
+		<input type="Button" class="GoButton" onClick="history.back()" value="Go Back" style="width: 200px;">
+		<BR><BR><cfabort>
+	</cfif>
+	
+	<!---	<cf_cryp	[ type = "{ en* | de }" ] (en=encrypt, de=decrypt; default is "en")
+									string = "{ string to encrypt or decrypt }"
+									key = "{ key to use for encrypt or decrypt }"
+									[ return = "{ name a variable to return to the calling page as a structure, default is 'cryp' }" --->
+	<cfset ccNum = REPLACE(ccNum," ","","ALL")>
+	<cfset ccNum = REREPLACE(ccNum,"[^0-9]","","ALL")>
+	<cfset ccExp = REPLACE(ccExp," ","","ALL")>
+	<cfset ccExp = REREPLACE(ccExp,"[^0-9]","","ALL")>
+	<cf_cryp type="en" string="#ccNum#" key="#key#">
+	<cfset ccd = cryp.value>
+	<cf_cryp type="en" string="#ccv#" key="#key#">
+	<cfset ccven = cryp.value>
+</cfif>
+
+<cfif IsDefined("checkout") and IsDefined("refpolicy")>
+	<!--- perform registrations --->
+	<cfinclude template="checkoutRoutine.cfm">
+	
+	<!--- go to finish page --->
+	<cfquery datasource="#dopsds#ro" name="getLastinvoice">
+		select   invoicenumber
+		from     invoice
+		where    primarypatronid = #cookie.uid#
+		and invoicefacid = 'WWW'
+		order by invoicenumber desc
+		limit    1
+	</cfquery>
+	
+	<cflocation url="regsuccess.cfm?localfac='WWW'&NextInvoice=#getLastinvoice.invoicenumber#">
+	<cfabort>
+</cfif>
+
+<cfif isDefined("checkout") and not IsDefined("refpolicy")>
+	<BR><BR><strong>Refund policy acknowledgement was not checked. Go back and try again.</strong><BR><BR>
+	<input type="Button" class="GoButton" onClick="history.back()" value="Go Back" style="width: 200px;">
+	<cfabort>
+</cfif>
+
+<!--- display code --->
+<form method="post" action="class_summary.cfm" name="class_sum">
+<cfset TotalMonies = 0>
+<cfset TotalCost = 0>
+<cfset problems = 0>
+<cfset TotalBalance = 0>
+<cfset AssmtErrors = 0>
+<CFSET FAmax = 0>
+
+
+
+<table border="0" width=750 cellpadding="2" cellspacing="1">
+<TR>
+<td></TD>
+<td></TD>
+<td></TD>
+<td></TD>
+<td></TD>
+<td></TD>
+<td></TD>
+<td width="25"><img src="/siteimages/spacer.gif" width="25" height="1" border="0" alt=""></TD>
+</TR>
+<tr>
+<td colspan=6 class="pghdr">Class Registration Checkout</td>
+<td colspan="2" class="bodytext" valign=top align="center" nowrap valign="top"><A HREF="javascript:void(window.open('help.cfm?c=3','','width=518,height=355,statusbar=0,scrollbars=1,resizable=0'))"><strong>Registration Help</strong></A></td>
+
+</tr>
+
+<tr bgcolor="666666">
+<td class="lgnhdr" colspan=4 nowrap><strong>#GetPrimary.LastName#, #GetPrimary.FirstName# #GetPrimary.MiddleName#</strong></td>
+<td colspan=4 align="right" class="lgnhdr"><strong>District Status:</strong> <cfif InDistrictStatus is 1>In<cfelse>Out Of</cfif> District&nbsp;</td>
+
+<TR>
+	<TD colspan="8">
+		<cfset suppresstitle = 1>
+		<cfset suppressdropbutton = 1>
+		<cfinclude template="shownewreg.cfm">
+		<cfset TotalCost = TotalMonies>
+	</TD>
+</TR>
+
+<cfset NetBalance = GetAccountBalance(PrimaryPatronID)>
+<cfset NetToPay = max(0,TotalCost - NetBalance)>
+<cfset CreditUsed = min(NetBalance,TotalCost)>
+
+<cfif IsDefined("getSelectedCard") and getSelectedCard.recordcount is 1>
+	<CFSET gcpayment = min(min(nettopay, MaxGCAmount), getSelectedCard.sumnet)>
+
+	<cfif getSelectedCard.isfa is 1>
+		<CFSET gcpayment = min(gcpayment, FACardLimit)>
+	</cfif>
+
+</cfif>
+
+<input name="ORIGINALAVAILABLECREDIT" type="hidden" value="#NetBalance#">
+<CFPARAM name="gcpayment" default="0">
+<CFPARAM name="newcardbalance" default="0">
+<TR>
+<td class="bodytext" colspan="5" valign=top style="border-top-style:solid;border-top-width:1px;"><cfset lastmonth = dateadd('m','0',now())>
+<cfif nettopay GT gcpayment><!--- only show cc fields if there is a non-credit balance --->
+<strong>Please enter payment information:</strong><br>
+
+<table cellpadding="3">
+	<tr>
+		<td bgcolor="ffffff"><u>Type</u></td>
+		<td bgcolor="ffffff"><u>Number</u></td>
+		<td bgcolor="ffffff"><u>Expiration</u></td>
+	</tr>
+	<tr>
+		<td valign="top" bgcolor="ffffff"><select name="ccType" class="form_input">
+		<option value="V">Visa</option>
+		<option value="MC">MasterCard</option>
+		<option value="DISC">Discover</option>
+	</select></td>
+		<td valign="top" bgcolor="ffffff"><input name="ccNum1" size="4" type="Text" maxlength="4" class="form_input">-<input name="ccNum2" size="4" type="Text" maxlength="4" class="form_input">-<input name="ccNum3" size="4" type="Text" maxlength="4" class="form_input">-<input name="ccNum4" size="4" type="Text" maxlength="4" class="form_input"></td>
+		<td valign="top" bgcolor="ffffff"><select name="ccExpMonth" class="form_input">
+		<option value="01"></option>
+		<cfloop from="1" to="12" step="1" index="q">
+			<option value="#numberformat(q,"00")#" >#numberformat(q,"00")#</option>
+		</cfloop>
+	</select>
+	<select name="ccExpYear" class="form_input">
+		<option value="1965"></option>
+		<cfloop from="0" to="9" step="1" index="q"><!--- allow 10 years ahead --->
+			<option value="#year(now()) + q#">#year(now()) + q#
+		</cfloop>
+	</select></td>
+	</tr>
+	<tr>
+		<td colspan="3" bgcolor="ffffff"><a href="javascript:void(0);" onClick="window.open('ccv.cfm','ccv','width=340, height=400, toolbar=no, scrollbars=yes, noresize');">CCV Number</a> (back of credit card)&nbsp;&nbsp;&nbsp;<input name="ccv" size="3" type="Text" maxlength="3" class="form_input"></td>
+	</tr>
+</table>
+
+
+<cfelse><!--- patron had more credit than amount due, just pass fields to satisfy processing --->
+
+	<cfif Get4NewRegistrations.tmp is 1>
+
+		<CFIF Isdefined("gcpayment") and gcpayment GT 0>
+			<br>
+		<CFELSE>
+			You have a $0.00 balance - no credit card needed.
+		</CFIF>
+	
+		<input type="hidden" name="cctype" value="">
+		<input type="hidden" name="ccnum1" value="">
+		<input type="hidden" name="ccnum2" value="">
+		<input type="hidden" name="ccnum3" value="">
+		<input type="hidden" name="ccnum4" value="">
+		<input type="hidden" name="ccExpMonth" value="">
+		<input type="hidden" name="ccExpYear" value="">
+		<input type="hidden" name="ccv" value="">
+	</cfif>
+	
+</cfif>
+
+<CFIF Isdefined("gcpayment") and gcpayment GT 0>
+	<table>
+		<td valign="top" ><input type="checkbox" name="removegiftcard" checked onClick="location.href='class_summary.cfm';"></td>
+		<td valign="top">
+			Use selected giftcard to pay $#trim(numberformat(gcpayment,"999,999.99"))# of the $#trim(numberformat(NetToPay,"999,999.99"))# due. Uncheck the box if you do not want to use the giftcard. The remaining amount must be paid by credit card.
+		</td>
+	</table>
+</CFIF>
+
+<CFPARAM name="theselectedcard" default="0">
+<CFPARAM name="theselectedcardbalance" default="0">
+<CFPARAM name="theselectedcardisfa" default="0">
+
+<input name="giftcardnumber" type="hidden" value="#theselectedcard#">
+<input name="giftcardtstartbalance" type="hidden" value="#theselectedcardbalance#">
+<input name="giftcarddebitamount" type="hidden" value="#gcpayment#">
+<input name="giftcardisfa" type="hidden" value="#theselectedcardisfa#">
+<input name="calculatedNetToPay" type="hidden" value="#nettopay#">
+<input name="netdue" type="hidden" value="#nettopay#">
+<input name="TENDEREDCHARGE" type="hidden" value="#NetToPay - gcpayment#">
+</TD>
+<td class="bodytext" align="right" colspan=2 valign=top nowrap style="border-top-style:solid;border-top-width:1px;">
+
+	<cfif Get4NewRegistrations.tmp is 1>
+
+		<cfif TotalBalance gt 0>
+			Balance After Deposit(s)<br>
+		</cfif>
+	
+		Account Starting Balance<br>
+		Total Fees<br>
+		Credit Used<br>
+		Amount Due<br>
+		<CFIF Isdefined("gcpayment") and gcpayment GT 0>Gift Card Payment<br></CFIF>
+		<cfif Isdefined("gcpayment") AND gcpayment GT 0 AND nettopay GT gcpayment>Remaining Due<br></CFIF>
+		<strong>Account Ending Balance</strong>
+	</cfif>
+
+</TD>
+<td class="bodytext" align="right" valign=top style="border-top-style:solid;border-top-width:1px;">
+
+	<cfif Get4NewRegistrations.tmp is 1>
+
+		<cfif TotalBalance gt 0>
+			<strong>#numberformat(TotalBalance,"999,999.99")#</strong><br>
+		</cfif>
+
+		#numberformat(NetBalance,"999,999.99")#<br>
+		#numberformat(TotalCost,"999,999.99")#<br>
+		<input name="TotalFees" type="Hidden" value="#TotalCost#">
+		#numberformat(CreditUsed,"999,999.99")#<br>
+		<input name="CreditUsed" type="Hidden" value="#CreditUsed#">
+		<span class="bodytext_red">#numberformat(NetToPay,"999,999.99")#</span><br>
+		<CFIF Isdefined("gcpayment") and gcpayment GT 0><span class="bodytext_green">#numberformat(gcpayment,"999,999.99")#</span><br></CFIF>
+		<cfif Isdefined("gcpayment") AND gcpayment GT 0 AND nettopay GT gcpayment><span class="bodytext_red">#numberformat(NetToPay - gcpayment  ,"999,999.99")#</span><br></CFIF>
+		<span class="bodytext"><strong>#numberformat(NetBalance - CreditUsed,"999,999.99")#</strong></span>
+		<input name="ExpEndBal" type="Hidden" value="#NetBalance - CreditUsed#">
+	</cfif>
+
+</TD>
+</TR>
+<TR>
+<td class="bodytext" colspan="8">
+
+<CFIF nettopay GT 0>
+<table width="100%" cellspacing="0" id="alertboxyellow" border="0">
+<tr>
+	<td width="45%" valign="top">
+		<table cellspacing="2" >
+			<tr>
+		
+	<td  align="left"><strong><u>Use Giftcard</u></strong><br>Select from list or enter card number. 
+		<CFIF Isdefined("selectcardmessageerror")>
+		<SCRIPT>
+			alert("#selectcardmessageerror#");
+		</SCRIPT>
+		</CFIF>
+	</TD>
+</TR>
+<tr>
+	<td nowrap>
+	<select name="registeredcard" class="form_input" onChange="fillcc();">
+		<option value="None">Select/Enter Card</option>
+
+		<cfif IsDefined("getcards")>
+
+			<CFLOOP query="getcards">
+				<cf_cryp type="de" string="#getcards.othercreditdata#" key="#skey#">
+				<option value="#trim(cryp.value)#">#left(cryp.value,4)# #insert(" ",mid(cryp.value,5,8),4)# #right(cryp.value,4)# ($ #numberformat(sumnet, "99,999.99")#)</option>
+			</CFLOOP>
+
+		</cfif>
+			
+		</select><br><img src="/siteimages/spacer.gif" width="1" height="3" border="0" alt=""><br>
+		<input type="text" name="unreg_gc1" size="4" maxlength="4" class="form_input">&nbsp;
+		<input type="text" name="unreg_gc2" size="4" maxlength="4" class="form_input">&nbsp;
+		<input type="text" name="unreg_gc3" size="4" maxlength="4" class="form_input">&nbsp;
+		<input type="text" name="unreg_gc4" size="4" maxlength="4" class="form_input">&nbsp;&nbsp;&nbsp;
+		Max amount to apply
+		<input value="#numberformat(NetToPay,"999,999.99")#" type="text" name="MaxGCAmount" size="8" maxlength="7" class="form_input">
+		<input type="submit" name="pickgiftcard" class="form_input" value="Apply" style="width: 50px;">
+	</td>
+</tr>
+</table>
+</td>
+<td>
+	<td valign="top" align="left" width="55%">
+
+	<CFIF theselectedcard NEQ 0>
+		<CFSET newgcbalance = theselectedcardbalance - nettopay - gcpayment>
+		<cf_cryp type="en" string="#theselectedcard#" key="#skey#">
+		<cfset CardLimit = getSelectedCard.sumnet>
+
+		<cfif getSelectedCard.isfa is 1>
+			<cfset CardLimit = min(CardLimit, FACardLimit)>
+		</cfif>
+
+		<table width="100%" cellpadding="2" cellspacing="0" border="0">
+			<tr>
+				<td bgcolor="##FFFFFF"><strong>Selected Card</strong></td>
+				<td bgcolor="##FFFFFF" align="right">#left(theselectedcard,4)# #insert(" ",mid(theselectedcard,5,8),4)# #right(theselectedcard,4)#</td>
+			</tr>
+			<tr>
+				<td bgcolor="##EEEEEE">
+					<strong>
+					<cfif getSelectedCard.isfa is 0>
+						Available
+					<cfelse>
+						Applicable
+					</cfif>
+
+					Funds</strong>
+
+					<CFIF getSelectedCard.isfa IS true>
+						* ($ #numberformat(TrueBalance, "99,999.99")# true balance)
+						<cfset ApplicableAmount = FACardLimit>
+					<cfelse>
+						<cfset ApplicableAmount = CardLimit>
+					</CFIF>
+				</td>
+				<td bgcolor="##EEEEEE" align="right">$#numberformat(CardLimit, "____.__")#</td>
+			</tr>
+			<tr>
+				<td bgcolor="##FFFFFF"><strong>Balance After Transaction</strong></td>
+				<td bgcolor="##FFFFFF" align="right">$#numberformat(TrueBalance - gcpayment, "____.__")#</td>
+			</tr>
+
+			<CFIF getSelectedCard.isfa IS true and 1 is 1>
+				<TR>
+					<TD colspan="2">*Available funds are determined by eligibility of individual household members for family assistance.</TD>
+				</TR>
+			</CFIF>
+
+		</table>
+	</CFIF>
+
+</td>
+</tr>
+</table>
+</CFIF>
+
+<br>
+</TD>
+</TR>
+
+<cfif Get4NewRegistrations.tmp is 1>
+
+	<cfquery datasource="#dopsds#ro" name="GetDisclaimer" cachedwithin="#CreateTimeSpan(1,0,0,0)#">
+		select   disclaimcontents
+		from     disclaimers
+		where    disclaimname = 'Refunds'
+	</cfquery>
+	
+	<cfif nettopay gte 0>
+	
+		<cfif GetDisclaimer.recordcount is 1>
+			<TR><TD colspan=8>
+			Please read and agree to the refund policy below<br>
+			
+			<table border=0 cellpadding=2 cellspacing="0" bgcolor="ededed">
+				<TR>
+				<TD><input type="checkbox" name="refpolicy">I <strong>agree</strong> to the following refund policy:<br><br>
+				#Replace(GetDisclaimer.disclaimcontents,chr(13),"<BR>","all")#</TD>
+				</TR>
+			</table>
+			</TD></TR>
+		</cfif>
+	
+	</cfif>
+
+</cfif>
+
+<cfif nettopay gte 0 and Get4NewRegistrations.tmp is 1>
+	<TR>
+		<td colspan="8" align="center">
+			<input name="checkout" value="Place This Order" type="Submit" style="width: 170px; height: 30px; color:##ffffff; background-color:##0000cc; font-weight:bold;">
+		</TD>
+	</TR>
+</cfif>
+
+</table>
+</form>
+				
+					<!--- END CLASS CONTENT --->
+					</td>
+				</tr>
+			</table>
+		</td>
+    </tr>
+	<tr>
+		<td colspan="3"><img src="#request.imagedir#/spacer.gif" width="1" height="11" border="0" alt=""></td>
+	</tr>
+
+<cfif not IsDefined("ShowTC")>
+	<cfinclude template="/portalINC/footer.cfm">
+</cfif>
+
+</table>
+</cfoutput>
+
+<CFINCLUDE template="/portalINC/googleanalytics.cfm">
+
+<cfif IsDefined("ShowTC")>
+	<BR><cfoutput><span style="font-size: x-small;">TC: #GetTickCount() - tc#</span></cfoutput>
+</cfif>
+
+</body>
+</html>

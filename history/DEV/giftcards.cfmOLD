@@ -1,0 +1,286 @@
+
+
+<cfif cookie.loggedin is not 'yes'>
+	<cflocation url="/secure/portal/index.cfm?msg=3">
+	<cfabort>
+</cfif>
+
+<cfset module = "WWW">
+<cfset localfac = "WWW">
+<cfset localnode = "W1">
+<cf_skey>
+
+<!--- remove reload item --->
+<CFIF Isdefined("url.removeid") and arraylen(session.myCart) GTE url.removeid>
+	<CFSET temp = ArrayDeleteAt(session.myCart, url.removeid)>
+</CFIF>
+
+
+<!--- routine to update reload item in shopping cart --->
+<CFIF Isdefined("form.reloadamount")>
+	<CFSCRIPT>
+		if (not Isdefined("session.myCart") ) {
+			session.myCart = arrayNew(1);
+		}
+	</CFSCRIPT>
+	
+	<CFSCRIPT>
+		thisrow = arraylen(session.myCart) + 1;
+		session.myCart[thisrow] = structNew();	
+		session.myCart[thisrow].transactiontype = "reload";
+		session.myCart[thisrow].newpurchase = 0;
+		session.myCart[thisrow].reloadcardnumber = trim(form.reloadcardnumber);	
+		session.myCart[thisrow].reloadamount = trim(form.reloadamount);	
+	</CFSCRIPT>
+</CFIF>
+
+<!--- query to register a card; must be activated and valid number --->
+<CFIF Isdefined("form.cardnumber2reg")>
+	<cfset ocNum = replace(form.cardnumber2reg," ","","all")>
+	<cfset ocNum = REREPLACE(ocNum,"[^0-9]","","ALL")>
+	<cf_cryp type="en" string="#ocNum#" key="#skey#">
+	<cfset enOtherCreditData = cryp.value>
+	<cfquery datasource="#request.reg_dsn#" name="GetOtherCreditBalance">
+		SELECT   othercreditdata.valid, othercredithistorysums.sumcredit - sumdebit AS bal
+		FROM     othercredithistorysums othercredithistorysums
+				 INNER JOIN othercredittypes othercredittypes ON othercredithistorysums.othercredittype=othercredittypes.othercredittype 
+				 INNER JOIN othercreditdata on othercreditdata.cardid=othercredithistorysums.cardid
+		WHERE    othercreditdata.othercreditdata = '#enOtherCreditData#'
+	</cfquery>
+	<cfquery datasource="#request.reg_dsn#" name="CheckForCardInStock">
+		select pk
+		from   othercreditdatastock
+		where  othercreditdata = '#enOtherCreditData#'
+	</cfquery>
+	<cfquery datasource="#request.reg_dsn#" name="CheckCardStatus">
+		select cardid, valid, primarypatronid
+		from   othercreditdata
+		where  othercreditdata = '#enOtherCreditData#'
+	</cfquery>
+	<cfset errormsg = "">
+	<cfif GetOtherCreditBalance.recordcount is 0>
+		<cfset errormsg = "Specified card was not found.">
+	<cfelseif CheckForCardInStock.recordcount is 0>
+		<cfset errormsg = "Specified card was not found.">
+	<cfelseif CheckCardStatus.valid is 0>
+		<cfset errormsg = "Specified card was found but is listed as invalid.">
+	<cfelseif CheckCardStatus.primarypatronid is not '' AND CheckCardStatus.primarypatronid is not cookie.uid>
+		<cfset errormsg = "Specified card is registered to another household.">
+	<cfelseif CheckCardStatus.primarypatronid is not '' AND CheckCardStatus.primarypatronid is  cookie.uid>
+		<cfset errormsg = "Specified card is already registered to this household.">
+	</cfif>
+	<CFIF errormsg EQ "">
+		<cfquery datasource="#dopsds#" name="UpdateCard">
+			update othercreditdata
+			set primarypatronid = #cookie.uid#
+			where cardid = #CheckCardStatus.cardid#
+		</cfquery>
+		<cfquery datasource="#dopsds#" name="InsertNewCardActivationHistory">
+			insert into othercreditdatahistory
+				(cardid, invoicefacid, action, userid, module)
+			values
+				(#CheckCardStatus.cardid#, '#LocalFac#', 'S', 0, '#module#')
+		</cfquery>
+		<cfset confirmed = "Card has been registered for current household">	
+	</CFIF>
+</CFIF>
+
+
+<cfquery datasource="#dopsds#" name="getCards">
+	select d.*, s.sumnet 
+	from othercreditdata d, othercredithistorysums s
+	where d.primarypatronid = #cookie.uid#
+	and d.activated is true
+	and d.valid is true
+	and s.cardid = d.cardid
+	order by d.cardid
+</cfquery>
+
+<!--- there should be no more than one record per card since there is only one registration --->
+		
+
+
+
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+	<title>Giftcards</title>
+	
+	<SCRIPT language="javascript">
+		function register() {
+			if (document.gift.cardnumber2reg.value.length != 16) {
+ 				alert('Cardnumbers have 16 digits without any spaces. Please enter the card number in its correct format.');
+				document.gift.cardnumber2reg.focus();
+				return false;
+ 			}
+			else {
+				document.gift.submit();
+			}
+		}
+	</SCRIPT>
+</head>
+
+<body leftmargin="0" topmargin="0">
+
+
+<cfset localfac = "WWW">
+<cfset localnode = "W1">
+<cfset DS = "thirst">
+
+<!--- <cfif not IsDefined("PrimaryPatronID")>
+	<strong>No patron ID specified.</strong>
+	<cfabort>
+</cfif> --->
+
+<cfoutput>
+
+
+
+
+
+
+<table border="0" cellpadding="0" cellspacing="0" width="750">
+  <tr>
+   <td valign=top>
+   		<table border=0 cellpadding=2 cellspacing=0 width=749>
+			<tr>
+				<td colspan=2 class="pghdr">
+				<!--- start header --->
+				<CFINCLUDE template="/portalINC/dsp_header.cfm">
+				<!--- end header --->
+				</td>
+			</tr>
+			<tr>
+				<td valign=top>
+					<table border=0 cellpadding=2 cellspacing=0>
+						<tr>
+							<td><img src="file:///X|/www/secure/portal/history/images/spacer.gif" width="130" height="1" border="0" alt=""></td>
+						</tr>
+						<tr>
+							<td valign=top nowrap class="lgnusr"><br>
+							<!--- start nav --->
+							<cfinclude template="/portalINC/admin_nav_history.cfm">
+							<!--- end nav --->
+							</td>
+						</tr>		
+					</table>		
+				</td>
+				<td valign=top class="bodytext" width="100%">
+				<!--- start content --->
+<CFIF cgi.remote_ADDR NEQ "172.16.200.85">
+				
+				<br><span class="pghdr">Coming Soon - Gift Cards</span><br>
+				<br>
+				Gift card functions will be available Friday January 18, 2008.
+				
+<CFELSE>
+				
+				<br><span class="pghdr">Registered Gift Cards</span><br>
+				<table border="0" cellpadding="3" cellspacing="0" width="100%">
+					<tr bgcolor="cccccc" >
+						<td><strong>Card Number</strong></td>
+						<td><strong>Date Registered</strong></td>
+						<td><strong>Balance</strong></td>
+						<td align="center"><strong>Actions</strong></td>
+					</tr>
+					<CFLOOP query="getcards">
+					<cfquery datasource="#dopsds#" name="getAct">
+						select h.dt from othercreditdatahistory h
+						where h.cardid = #getcards.cardid#
+						and h.action = 'S'
+						order by h.dt desc
+						limit 1
+					</cfquery>
+					<cf_cryp type="de" string="#getcards.othercreditdata#" key="#skey#">
+					<CFSET allowreloadflag = 1>
+					<!---<CFSET temp = arrayclear(session.myCart)>length: #arraylen(session.myCart)#<CFABORT>--->
+					<CFIF Isdefined("session.myCart") and arraylen(session.myCart) GT 0>
+						<CFLOOP from="1" to="#arraylen(session.myCart)#" index="i">
+							<CFIF session.myCart[i].reloadcardnumber EQ cryp.value>
+								<CFSET allowreloadflag = 0>
+							</CFIF>
+						</CFLOOP>
+					</CFIF>
+					<tr >
+						<td>#cryp.value#</td>
+						<td>#dateformat(getAct.dt,"mmmm dd, yyyy")#</td>
+						<td>$#numberformat(sumnet,"____.__")#</td>
+						<td align="center"><CFIF allowreloadflag EQ 1><a href="file:///X|/www/secure/portal/history/giftcards.cfm?reloadcardnumber=#cryp.value#">Reload</a> | </CFIF>><a href="file:///X|/www/secure/portal/history/giftcards.cfm?historycardnumber=#cryp.value#">View History</a></td>
+					</tr>
+					</CFLOOP>
+				</table>
+				<form action="#cgi.script_name#" method="post" name="reload">
+				<CFIF Isdefined("url.reloadcardnumber") OR (Isdefined("session.myCart") AND arraylen(session.myCart) GT 0) >
+				<br><span class="pghdr">Reload Gift Card</span><br>
+				<table width="50%" border="0" cellpadding="3" cellspacing="0" >
+					<tr bgcolor="##FFFFCC">
+						<td><strong>Card Number</strong></td>
+						<td><strong>Reload Amount</strong></td>
+						<td><strong>&nbsp;</strong></td>
+					</tr>
+				<CFIF Isdefined("url.reloadcardnumber")>
+					<tr>
+						<td>#url.reloadcardnumber#<input type="hidden" name="reloadcardnumber" value="#url.reloadcardnumber#"></td>
+						<td>$<input type="text" size="8" name="reloadamount" class="form_input">&nbsp;<input type="submit" value="Add To Cart" class="form_input"></td>
+						<td>&nbsp;</td>
+					</tr>			
+				</CFIF>
+				<CFIF Isdefined("session.myCart") AND arraylen(session.myCart) GT 0>
+				<CFLOOP from="1" to="#arraylen(session.myCart)#" index="i">
+					<tr>
+						<td>#session.myCart[i].reloadcardnumber#</td>
+						<td>$#numberformat(session.myCart[i].reloadamount,"____.__")#</td>
+						<td><a href="/secure/portal/history/giftcards.cfm?removeid=#i#">Remove</a></td>
+					</tr>
+				</CFLOOP>
+					<tr>
+						<td colspan="3" align="right"><input type="button" value="Check Out" class="form_input"></td>
+					</tr>
+				</CFIF>
+				</table>
+				</CFIF>
+				</form>
+				
+				<br><span class="pghdr">Register a Gift Card</span><br>
+				All patrons with a valid THPRD Residency Card are able to register their gift cards online through their portal page. While registering your Gift Card is not required, we strongly recommend that you register your card as soon as you receive it. A registered Gift Card will allow only your household members to use the funds available, enable you to track your usage, and check or reload your balance at any time. Also, if a registered Gift Card is lost or stolen, the registered cardholder can contact us and we will immediately freeze the remaining balance of the card and issue a replacement card for the balance shown on our records. (A $5.00 replacement card fee will be deducted from your balance).
+<br><br>
+If your card is not registered, you must treat your card like cash. The bearer is responsible for its loss or theft. THPRD is not responsible for any unauthorized card use, nor can we replace it if lost or stolen.<br><br>
+				<CFIF Isdefined("confirmed")>
+					<font color="green"><b>Card #form.cardnumber2reg# has been registered to this household.</b></font><br>
+				</CFIF>
+				<CFIF Isdefined("errormsg") AND trim(errormsg) NEQ ''>
+					<font color="red"><b>#errormsg#</b></font><br>
+				</CFIF>
+				
+				<table >
+					<tr>
+						<form action="#cgi.script_name#" method="post" name="gift">
+						<td class="bodytext" valign="middle">Gift Card Number:</td>
+						<td valign="middle"><input class="form_input" type="text" name="cardnumber2reg" maxlength="16" size="22">&nbsp;<input type="button" value="Register Card" onClick="register();" class="form_input"></td>
+						</form>
+					</tr>
+				</table>
+</CFIF>
+				<!--- end content --->
+				</td>
+			</tr>
+		</table>   
+   </td>
+  </tr>
+  <tr>
+   <td colspan="2" valign="top">&nbsp;</td>
+  </tr>
+  <cfinclude template="/portalINC/footer.cfm">
+
+</table>
+</body>
+</html>
+</cfoutput>
+
+
+
+
+
+

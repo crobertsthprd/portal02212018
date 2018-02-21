@@ -1,0 +1,48 @@
+<!--- drop classes --->
+<cfif IsDefined("dc") and dc is not "">
+	<cfoutput>
+	<cf_cryp type="de" string="#dc#" key="#skey#">
+	<cfset dc_dropclass = cryp.value>
+
+	<cftransaction action="BEGIN" isolation="REPEATABLE_READ">
+
+		<!---<cfif SystemLock() is 1></cfif>--->
+			<cfset tmp = ListToArray(dc_dropclass, "_")>
+
+			<!--- delete if correct checksum and all other vars match--->
+			<cfif tmp[1] + tmp[2] is tmp[3]><!---  and tmp[4] is currentsessionid --->
+
+				<cfquery datasource="#dopsds#" name="InsertRegHistory">
+					select dops.insertregproc(#tmp[1]#, #tmp[2]#, 'D', 0, 'W1')
+				</cfquery>
+
+				<cfquery datasource="#dopsds#" name="DeleteRegistration">
+					delete  from activity
+					where   primarypatronid = #tmp[1]#
+					and     regid = #tmp[2]#
+					and     invoicefacid is null
+					and     invoicenumber is null
+					;
+					delete  from reg
+					where   primarypatronid = #tmp[1]#
+					and     regid = #tmp[2]#
+					;
+					delete  from reghistory
+					where   primarypatronid = #tmp[1]#
+					and     regid = #tmp[2]#
+					and     invoicefacid is null
+					and     invoicenumber is null
+				</cfquery>
+
+				<cfset msg = "">			
+			<cfelse>
+				<cfset msg = "Could not delete specified class">
+				<cfset errormsg = 1>
+			</cfif>
+
+		
+
+	</cftransaction>
+
+	</cfoutput>
+</cfif>

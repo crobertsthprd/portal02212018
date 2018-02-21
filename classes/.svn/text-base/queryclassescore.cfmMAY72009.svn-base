@@ -1,0 +1,591 @@
+<cfparam name="offset" default="0">
+
+
+<cfsavecontent variable="debugtext">
+<cfoutput>
+ SELECT   classesview.ClassID,
+          classesview.Description,
+          classesview.TermID,
+          classesview.FacID,
+          length(classesview.ClassComments) as ClassCommentsLength,
+          classesview.UniqueID,
+          classesview.Status,
+          coalesce(classesview.MaxAgeMonths,0) as MaxAgeMonths,
+          coalesce(classesview.MinAgeMonths,0) as MinAgeMonths,
+          classesview.maxdob,
+          classesview.mindob,
+          classesview.InDistRegFee,
+          classesview.InDistSenFee,
+          classesview.MiscFee,
+          classesview.MaxQty,
+          classesview.idDeposit,
+          classesview.odDeposit,
+          classesview.StartDT,
+          classesview.EndDT,
+          length(classesview.classtext) as ClassTextLength,
+          classesview.SunCount,
+          classesview.MonCount,
+          classesview.TueCount,
+          classesview.WedCount,
+          classesview.ThuCount,
+          classesview.FriCount,
+          classesview.SatCount,
+          Terms.TermName,
+          terms.allowweb,
+          terms.allowoddt,    
+          facilities.name,
+          facilities.scmonths,
+          classstatuscodes.statusdesc,
+          classesview.regcount as allocated,
+          classesview.wlcount as waitlist,
+          classesview.ewpcount as ewpclassallocated,
+          classesview.levels,
+          classesview.leveltypecode
+
+			<cfif cookie.ds is 'Out Of District'>
+					, dops.hasvalidassessmentforclass(#primarypatronid#, classesview.termid, classesview.facid, classesview.classid) as hasvalidassmt
+			</cfif>
+ FROM     Classesview
+	         INNER JOIN Terms ON classesview.FacID=Terms.FacID AND classesview.TermID=Terms.TermID
+	         inner join facilities on classesview.facid=facilities.facid
+	         inner join classstatuscodes on classesview.status=classstatuscodes.statuscode
+	WHERE    classesview.suppressonweb = false
+	and      classesview.status in ('A', 'X')
+
+	<cfif GETCLASSES is "Search For Classes">
+		<cfset sfc = ListToArray(SelectSearchTermVar)>
+		and classesview.termid in (
+
+		<cfloop from="1" to="#ArrayLen(sfc)#" step="1" index="x">
+			'#sfc[x]#'<cfif x is not ArrayLen(sfc)>,</cfif>
+		</cfloop>		
+
+		)
+	<cfelseif GETCLASSES is "Search By Number">
+		and classesview.termid in (#PreserveSingleQuotes(SelectSearchTermClassModeVar)#)
+	<cfelse>
+		and classesview.termid is null
+	</cfif>
+
+	<cfif IsDefined("return0rows")>
+		and classesview.termid is null
+	</cfif>
+
+ 	and current_date >= Terms.StartDT::date - 40
+
+	<cfif IsDefined("nowaitlists")>
+		and classesview.wlcount = 0
+	</cfif>
+
+	<cfif IsDefined("notfilled")>
+		and classesview.regcount < MaxQty
+	</cfif>
+
+	<cfif getclasses is 'Search By Number'>
+		<cfset t = left(replace(classlist, chr(10), " ", "all"), 1000)>
+		<cfset t = replace(t, chr(13), " ", "all")>
+		<cfset t = lTrim(rTrim(uCase(REReplaceNoCase(t, "[^A-Z 0-9]", " " ,"ALL"))))>
+		<cfset t = replace(t, "  ", " ", "all")>
+		<cfset t = replace(t, " ", "','", "all")>
+		<cfset t = replace(t, ",''","","all")>
+		and classesview.classid in ('#replace(t, "''", "','", "all")#')
+	<cfelse>
+
+		<cfif not IsDefined("includestarted")>
+			and classesview.startdt > now()
+		</cfif>
+	
+		<cfif not IsDefined("includecompleted")>
+			and classesview.enddt > now()
+			and classesview.status = 'A'
+		</cfif>
+
+		<cfif keywords is not "">
+			<cfset maxwords = 250>
+
+			<cfif IsDefined("SearchMode") and SearchMode is "Phrase">
+				and classsearch like '%#uCase(left(keywords, 1000))#%'
+			<cfelse>
+
+				<cfif SearchMode is "any">
+					<cfset qsearchmode = "or">
+				<cfelse>
+					<cfset qsearchmode = "and">
+				</cfif>
+
+				<!--- <cfset keywordlist = listchangedelims(t,' ',',')> --->
+				<cfset t = left(replace(keywords, chr(10), " ", "all"), 1000)>
+				<cfset t = replace(t, chr(13), " ", "all")>
+				<cfset t = lTrim(rTrim(uCase(REReplaceNoCase(t, "[^A-Z 0-9 -]", " " ,"ALL"))))>
+				<cfset t = replace(t, "  ", " ", "all")>
+				<cfset t = replace(t, " ", "','", "all")>
+				<cfset t = replace(t, ",''","","all")>
+				<cfset t = replace(t, "''", "','", "all")>
+				<cfset KeyStringArray = ListToArray(t,"','")>
+				<cfset EndCount = ArrayLen(KeyStringArray)>
+
+				<!--- inclusions --->
+				<cfif EndCount gt 0>
+					<cfset t2 = ArrayNew(1)>
+
+					<cfloop from="1" to="#EndCount#" step="1" index="x">
+
+						<cfif left(KeyStringArray[x], 1) is not "-" and len(KeyStringArray[x]) gt 1>
+							<cfset ArrayAppend(t2, KeyStringArray[x])>
+						</cfif>
+
+					</cfloop>
+
+					<cfif ArrayLen(t2) gt 0>
+						and (
+		
+						<cfloop from="1" to="#min(maxwords, ArrayLen(t2))#" step="1" index="x">
+							classsearch like '%#uCase(t2[x])#%'
+							<cfif x is not min(maxwords, ArrayLen(t2))>#qsearchmode#</cfif>
+						</cfloop>
+						)
+					</cfif>
+
+				</cfif>
+
+				<!--- exclusions --->
+				<cfif EndCount gt 0>
+					<cfset t2 = ArrayNew(1)>
+
+					<cfloop from="1" to="#EndCount#" step="1" index="x">
+
+						<cfif left(KeyStringArray[x], 1) is "-" and len(KeyStringArray[x]) gt 1>
+							<cfset ArrayAppend(t2, KeyStringArray[x])>
+						</cfif>
+
+					</cfloop>
+
+					<cfif ArrayLen(t2) gt 0>
+						and (
+		
+						<cfloop from="1" to="#min(maxwords, ArrayLen(t2))#" step="1" index="x">
+							classsearch not like '%#mid(uCase(t2[x]), 2, 999)#%'
+							<cfif x is not min(maxwords, ArrayLen(t2))>and</cfif>
+						</cfloop>
+						)
+					</cfif>
+
+				</cfif>
+
+			</cfif>
+
+		</cfif>
+	
+		<cfif IsDefined("SelectStartHour")>
+			and date_part('hour', classesview.startdt) = #SelectStartHour#
+		</cfif>
+	
+		<cfif IsDefined("tod")>
+	
+			<cfif listlen(tod,",") lt 3>
+				and (
+	
+				<CFLOOP list="#tod#" index="stime">
+					(date_part('h',classesview.startdt) between #listfirst(stime,"|")# and #listlast(stime,"|")#)
+					<CFIF stime NEQ listlast(tod,",")>
+					or 
+					</CFIF>
+				</CFLOOP>
+	
+				)
+			</cfif>
+	
+		</cfif>
+	
+		<!--- facility selection --->
+		<cfif IsDefined("SelectFacility")>
+			and classesview.FacID in (#PreserveSingleQuotes(SelectFacility)#) <!--- <cfif tmp is not EndCount>or</cfif> --->
+		</cfif>
+	
+		<!--- instructor selection --->
+		<cfif IsDefined("SelectInstructor") and SelectInstructor is not ""<!---  and IsDefined("IncludeInstructor") --->>
+			and position('-#SelectInstructor#-' in instructorlist) > 0
+		</cfif>
+	
+		<cfif IsDefined("IncludeDOB") and not IsDefined("ignoreage")>
+			and (
+
+			<cfloop query="GetPatrons">
+				#CreateODBCDate(dob)# between mindob and maxdob
+				<cfif recordcount is not currentrow> or </cfif>
+			</cfloop>
+			)
+		</cfif>
+	
+		<!--- day of week selection --->
+		<cfif IsDefined("CBSun") or IsDefined("CBMon") or IsDefined("CBTue") or IsDefined("CBWed") or IsDefined("CBThu") or IsDefined("CBFri") or IsDefined("CBSat")>
+			and (
+	
+			<cfif IsDefined("WeekdayInclusion") and WeekdayInclusion is "All">
+				<cfset dj = "and">
+			<cfelse>
+				<cfset dj = "or">
+			</cfif>
+	
+			<cfset UseOR = 0>
+	
+			<cfif IsDefined("CBSun")>
+				<cfif UseOR is 1>#dj#</cfif> (SunCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBMon")>
+				<cfif UseOR is 1>#dj#</cfif> (MonCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBTue")>
+				<cfif UseOR is 1>#dj#</cfif> (TueCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBWed")>
+				<cfif UseOR is 1>#dj#</cfif> (WedCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBThu")>
+				<cfif UseOR is 1>#dj#</cfif> (ThuCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBFri")>
+				<cfif UseOR is 1>#dj#</cfif> (FriCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBSat")>
+				<cfif UseOR is 1>#dj#</cfif> (SatCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+			)
+		</cfif>
+
+	</cfif>
+
+	<cfif getclasses is 'Search By Number'>
+		order by classid
+	<cfelse>
+
+		<cfif ViewOrder is not "">
+			ORDER BY #ViewOrder#
+		<cfelse>
+			order by classid
+		</cfif>
+
+	</cfif>
+
+	offset  #Max(0, offset)#
+	limit   #returnqty#
+</cfoutput>
+</cfsavecontent>
+
+<cfif 1 is 11>
+	<cfoutput>#debugtext#</cfoutput>
+</cfif>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<cfquery datasource="#request.reg_dsn#ro" name="QueryClasses" timeout="60" result="s">
+ SELECT   classesview.ClassID,
+          classesview.Description,
+          classesview.TermID,
+          classesview.FacID,
+          length(classesview.ClassComments) as ClassCommentsLength,
+          classesview.UniqueID,
+          classesview.Status,
+          coalesce(classesview.MaxAgeMonths,0) as MaxAgeMonths,
+          coalesce(classesview.MinAgeMonths,0) as MinAgeMonths,
+          classesview.maxdob,
+          classesview.mindob,
+          classesview.InDistRegFee,
+          classesview.InDistSenFee,
+          classesview.MiscFee,
+          classesview.MaxQty,
+          classesview.idDeposit,
+          classesview.odDeposit,
+          classesview.StartDT,
+          classesview.EndDT,
+          length(classesview.classtext) as ClassTextLength,
+          classesview.SunCount,
+          classesview.MonCount,
+          classesview.TueCount,
+          classesview.WedCount,
+          classesview.ThuCount,
+          classesview.FriCount,
+          classesview.SatCount,
+          Terms.TermName,
+          terms.allowweb,
+          terms.allowoddt,    
+          facilities.name,
+          facilities.scmonths,
+          classstatuscodes.statusdesc,
+          classesview.regcount as allocated,
+          classesview.wlcount as waitlist,
+          classesview.ewpcount as ewpclassallocated,
+          classesview.levels,
+          classesview.leveltypecode
+
+			<cfif cookie.ds is 'Out Of District'>
+					, dops.hasvalidassessmentforclass(#primarypatronid#, classesview.termid, classesview.facid, classesview.classid) as hasvalidassmt
+			</cfif>
+ FROM     Classesview
+	         INNER JOIN Terms ON classesview.FacID=Terms.FacID AND classesview.TermID=Terms.TermID
+	         inner join facilities on classesview.facid=facilities.facid
+	         inner join classstatuscodes on classesview.status=classstatuscodes.statuscode
+	WHERE    classesview.suppressonweb = false
+	and      classesview.status in ('A', 'X')
+
+	<cfif GETCLASSES is "Search For Classes">
+		<cfset sfc = ListToArray(SelectSearchTermVar)>
+		and classesview.termid in (
+
+		<cfloop from="1" to="#ArrayLen(sfc)#" step="1" index="x">
+			'#sfc[x]#'<cfif x is not ArrayLen(sfc)>,</cfif>
+		</cfloop>		
+
+		)
+	<cfelseif GETCLASSES is "Search By Number">
+		and classesview.termid in (#PreserveSingleQuotes(SelectSearchTermClassModeVar)#)
+	<cfelse>
+		and classesview.termid is null
+	</cfif>
+
+	<cfif IsDefined("return0rows")>
+		and classesview.termid is null
+	</cfif>
+
+ 	and current_date >= Terms.StartDT::date - 40
+
+	<cfif IsDefined("nowaitlists")>
+		and classesview.wlcount = 0
+	</cfif>
+
+	<cfif IsDefined("notfilled")>
+		and classesview.regcount < MaxQty
+	</cfif>
+
+	<cfif getclasses is 'Search By Number'>
+		<cfset t = left(replace(classlist, chr(10), " ", "all"), 1000)>
+		<cfset t = replace(t, chr(13), " ", "all")>
+		<cfset t = lTrim(rTrim(uCase(REReplaceNoCase(t, "[^A-Z 0-9]", " " ,"ALL"))))>
+		<cfset t = replace(t, "  ", " ", "all")>
+		<cfset t = replace(t, " ", "','", "all")>
+		<cfset t = replace(t, ",''","","all")>
+		and classesview.classid in ('#replace(t, "''", "','", "all")#')
+	<cfelse>
+
+		<cfif not IsDefined("includestarted")>
+			and classesview.startdt > now()
+		</cfif>
+	
+		<cfif not IsDefined("includecompleted")>
+			and classesview.enddt > now()
+			and classesview.status = 'A'
+		</cfif>
+
+		<cfif keywords is not "">
+			<cfset maxwords = 250>
+
+			<cfif IsDefined("SearchMode") and SearchMode is "Phrase">
+				and classsearch like '%#uCase(left(keywords, 1000))#%'
+			<cfelse>
+
+				<cfif SearchMode is "any">
+					<cfset qsearchmode = "or">
+				<cfelse>
+					<cfset qsearchmode = "and">
+				</cfif>
+
+				<!--- <cfset keywordlist = listchangedelims(t,' ',',')> --->
+				<cfset t = left(replace(keywords, chr(10), " ", "all"), 1000)>
+				<cfset t = replace(t, chr(13), " ", "all")>
+				<cfset t = lTrim(rTrim(uCase(REReplaceNoCase(t, "[^A-Z 0-9 -]", " " ,"ALL"))))>
+				<cfset t = replace(t, "  ", " ", "all")>
+				<cfset t = replace(t, " ", "','", "all")>
+				<cfset t = replace(t, ",''","","all")>
+				<cfset t = replace(t, "''", "','", "all")>
+				<cfset KeyStringArray = ListToArray(t,"','")>
+				<cfset EndCount = ArrayLen(KeyStringArray)>
+
+				<!--- inclusions --->
+				<cfif EndCount gt 0>
+					<cfset t2 = ArrayNew(1)>
+
+					<cfloop from="1" to="#EndCount#" step="1" index="x">
+
+						<cfif left(KeyStringArray[x], 1) is not "-" and len(KeyStringArray[x]) gt 1>
+							<cfset ArrayAppend(t2, KeyStringArray[x])>
+						</cfif>
+
+					</cfloop>
+
+					<cfif ArrayLen(t2) gt 0>
+						and (
+		
+						<cfloop from="1" to="#min(maxwords, ArrayLen(t2))#" step="1" index="x">
+							classsearch like '%#uCase(t2[x])#%'
+							<cfif x is not min(maxwords, ArrayLen(t2))>#qsearchmode#</cfif>
+						</cfloop>
+						)
+					</cfif>
+
+				</cfif>
+
+				<!--- exclusions --->
+				<cfif EndCount gt 0>
+					<cfset t2 = ArrayNew(1)>
+
+					<cfloop from="1" to="#EndCount#" step="1" index="x">
+
+						<cfif left(KeyStringArray[x], 1) is "-" and len(KeyStringArray[x]) gt 1>
+							<cfset ArrayAppend(t2, KeyStringArray[x])>
+						</cfif>
+
+					</cfloop>
+
+					<cfif ArrayLen(t2) gt 0>
+						and (
+		
+						<cfloop from="1" to="#min(maxwords, ArrayLen(t2))#" step="1" index="x">
+							classsearch not like '%#mid(uCase(t2[x]), 2, 999)#%'
+							<cfif x is not min(maxwords, ArrayLen(t2))>and</cfif>
+						</cfloop>
+						)
+					</cfif>
+
+				</cfif>
+
+			</cfif>
+
+		</cfif>
+	
+		<cfif IsDefined("SelectStartHour")>
+			and date_part('hour', classesview.startdt) = #SelectStartHour#
+		</cfif>
+	
+		<cfif IsDefined("tod")>
+	
+			<cfif listlen(tod,",") lt 3>
+				and (
+	
+				<CFLOOP list="#tod#" index="stime">
+					(date_part('h',classesview.startdt) between #listfirst(stime,"|")# and #listlast(stime,"|")#)
+					<CFIF stime NEQ listlast(tod,",")>
+					or 
+					</CFIF>
+				</CFLOOP>
+	
+				)
+			</cfif>
+	
+		</cfif>
+	
+		<!--- facility selection --->
+		<cfif IsDefined("SelectFacility")>
+			and classesview.FacID in (#PreserveSingleQuotes(SelectFacility)#) <!--- <cfif tmp is not EndCount>or</cfif> --->
+		</cfif>
+	
+		<!--- instructor selection --->
+		<cfif IsDefined("SelectInstructor") and SelectInstructor is not ""<!---  and IsDefined("IncludeInstructor") --->>
+			and position('-#SelectInstructor#-' in instructorlist) > 0
+		</cfif>
+	
+		<cfif IsDefined("IncludeDOB") and not IsDefined("ignoreage")>
+			and (
+
+			<cfloop query="GetPatrons">
+				#CreateODBCDate(dob)# between mindob and maxdob
+				<cfif recordcount is not currentrow> or </cfif>
+			</cfloop>
+			)
+		</cfif>
+	
+		<!--- day of week selection --->
+		<cfif IsDefined("CBSun") or IsDefined("CBMon") or IsDefined("CBTue") or IsDefined("CBWed") or IsDefined("CBThu") or IsDefined("CBFri") or IsDefined("CBSat")>
+			and (
+	
+			<cfif IsDefined("WeekdayInclusion") and WeekdayInclusion is "All">
+				<cfset dj = "and">
+			<cfelse>
+				<cfset dj = "or">
+			</cfif>
+	
+			<cfset UseOR = 0>
+	
+			<cfif IsDefined("CBSun")>
+				<cfif UseOR is 1>#dj#</cfif> (SunCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBMon")>
+				<cfif UseOR is 1>#dj#</cfif> (MonCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBTue")>
+				<cfif UseOR is 1>#dj#</cfif> (TueCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBWed")>
+				<cfif UseOR is 1>#dj#</cfif> (WedCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBThu")>
+				<cfif UseOR is 1>#dj#</cfif> (ThuCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBFri")>
+				<cfif UseOR is 1>#dj#</cfif> (FriCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+	
+			<cfif IsDefined("CBSat")>
+				<cfif UseOR is 1>#dj#</cfif> (SatCount > 0)
+				<cfset UseOR = 1>
+			</cfif>
+			)
+		</cfif>
+
+	</cfif>
+
+	<cfif getclasses is 'Search By Number'>
+		order by classid
+	<cfelse>
+
+		<cfif ViewOrder is not "">
+			ORDER BY #ViewOrder#
+		<cfelse>
+			order by classid
+		</cfif>
+
+	</cfif>
+
+	offset  #Max(0, offset)#
+	limit   #returnqty#
+</cfquery>

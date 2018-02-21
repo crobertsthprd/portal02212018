@@ -1,0 +1,158 @@
+<cfif cookie.loggedin is not 'yes'>
+	<cflocation url="../index.cfm?msg=3">
+	<cfabort>
+</cfif>
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+	<title>Dropin Usage History</title>
+</head>
+<cfoutput>
+<body leftmargin="5" topmargin="10">
+<cfset mode = "PP">
+
+<!--- <cfquery name="GetOldestDI" datasource="#request.reg_dsn#" maxrows="1">
+	select dt
+	from dropinhistory
+	order by dt desc
+</cfquery> --->
+
+<cfquery datasource="#request.reg_dsn#" name="GetPatronData">
+	SELECT   PATRONS.lastname, PATRONS.firstname, PATRONS.gender, patrons.patronlookup,
+	         PATRONS.dob, PatronRelations.InDistrict, 
+	         PATRONADDRESSES.address1, PATRONADDRESSES.address2,
+				PATRONADDRESSES.city, PATRONADDRESSES.state, patrons.patronid, patrons.dob,
+				patronrelations.primarypatronid
+	FROM     patronrelations PATRONRELATIONS
+	         INNER JOIN patronaddresses PATRONADDRESSES ON PATRONADDRESSES.addressid=PATRONRELATIONS.addressid
+	         INNER JOIN patrons PATRONS ON PATRONRELATIONS.secondarypatronid=PATRONS.patronid 
+	WHERE    PATRONS.patronid = <cfif mode is "P">#patronid#<cfelse>#cookie.uid#</cfif>
+	AND      patrons.inactive = false
+</cfquery>
+
+<cfset LastMonth = datediff("m","2004-02-01",now())>
+
+	<!--- household mode --->
+	<cfquery datasource="#request.reg_dsn#" name="GetPatrons">
+		SELECT   PATRONRELATIONS.secondarypatronid, PATRONS.lastname, patrons.patronlookup,
+		         PATRONS.firstname, PATRONS.gender, PATRONS.dob,
+		         PATRONRELATIONS.primarypatronid 
+		FROM     patronrelations PATRONRELATIONS
+		         INNER JOIN patrons PATRONS ON PATRONRELATIONS.secondarypatronid=PATRONS.patronid 
+		WHERE    PATRONRELATIONS.primarypatronid = #cookie.uid#
+		AND      patrons.inactive = false
+		ORDER BY PATRONRELATIONS.relationtype
+	</cfquery>
+
+	<form action="dropin.cfm" method="post" name="dih">
+	<input type="Hidden" name="primarypatronid" value="#cookie.uid#">
+	<table width="675" cellpadding=3 cellspacing="0" border=0>
+		<TR>
+			<TD colspan="5" align="center"><strong>Household Drop-In History <cfif IsDefined("ShowRange")>for #replace(ShowRange,"-","/")#</cfif></strong></TD>
+		</TR>
+		<tr>
+			<td colspan="4" align=center>All data is displayed in descending order. View the month of
+			<select name="ShowRange" class="form_input">
+			<cfset ThisMonth = month(now())>
+			<cfset ThisYear = year(now())>
+
+			<cfloop from="0" to="#LastMonth#" step="1" index="q">
+				<option <cfif IsDefined("ShowRange") and ShowRange is numberformat(ThisMonth,"00") & "/" & ThisYear>selected</cfif> value="#numberformat(ThisMonth,"00")#-#ThisYear#">#numberformat(ThisMonth,"00")# / #ThisYear#
+				<cfset ThisMonth = ThisMonth - 1>
+
+				<cfif ThisMonth is 0>
+					<cfset ThisMonth = 12>
+					<cfset ThisYear = ThisYear - 1>
+				</cfif>
+
+			</cfloop>
+			</select>
+			<input type="Submit" value="View History" class="form_submit">
+			</td>	
+		</tr>
+
+		<!--- <cfset showprimdata = 1> --->
+
+		<cfloop query="GetPatrons">
+			<cfset ThisPatron = GetPatrons.secondarypatronid>
+			<cfset ThisPatronLastName = GetPatrons.lastname>
+			<cfset ThisPatronFirstName = GetPatrons.firstname>
+			<cfset ThisPatronGender = GetPatrons.gender>
+			<cfset ThisPatronDOB = GetPatrons.DOB>
+			<CF_HowLongHasItBeen DATE1="#ThisPatronDOB#" DATE2="#now()#" ADDWORDS="Yes" Abbreviated="yes">
+			<cfset age = #HowLong_Years# & ", " & #HowLong_Months#>
+
+			<tr bgcolor="0048d0">
+				<td colspan="4" class="bodytext_white">
+					<strong>#ThisPatronLastName#, #ThisPatronFirstName# (#patronlookup#)</strong><!--- , <cfif ThisPatronGender is "M">Male<cfelse>Female</cfif>, #dateformat(ThisPatronDOB,"mm/dd/yyyy")# (#age#) ---><BR>
+				</td>	
+			</tr>
+
+			<cfquery datasource="#request.reg_dsn#" name="GetHistory" maxrows="5000">
+				SELECT   DROPINHISTORY.dt, 
+				         DROPINACTIVITIES.description, DROPINSELECTIONS.facid, 
+				         PATRONS.lastname, PATRONS.firstname, PATRONS.renter, patrons.patronlookup,
+				         PATRONS.dob,dropinhistory.invoicenumber, dropinselections.passtype, facilities.name
+				FROM     dropinselections DROPINSELECTIONS
+				         INNER JOIN dropinhistory DROPINHISTORY ON DROPINSELECTIONS.facid=DROPINHISTORY.facid AND DROPINSELECTIONS.clickid=DROPINHISTORY.clickid
+				         INNER JOIN dropinactivities DROPINACTIVITIES ON DROPINSELECTIONS.activityid=DROPINACTIVITIES.activityid
+				         INNER JOIN patrons PATRONS ON DROPINSELECTIONS.patronid=PATRONS.patronid
+						 inner join facilities on dropinselections.facid = facilities.facid 
+				WHERE    DROPINSELECTIONS.patronid = #ThisPatron#
+
+				AND      
+				<cfif IsDefined("ShowRange")>
+					month(dt) = #left(ShowRange,2)#
+					and year(dt) = #right(ShowRange,4)#
+				<cfelse>
+					month(dt) = #month(now())#
+					and year(dt) = #year(now())#
+				</cfif>
+
+				ORDER BY DROPINHISTORY.dt DESC
+			</cfquery>
+
+			<cfif GetHistory.recordcount is 0>
+				<TR>
+					<TD colspan="4">No history found</TD>
+				</TR>
+			<cfelse>
+				<TR class="bodytext" bgcolor="ededed">
+					<TD><strong>Facility</strong></TD>
+					<TD><strong>Date/Time</strong></TD>
+					<TD><strong>Activity</strong></TD>
+					<TD><strong>Pass Type</strong> (if any)</TD>
+				</TR>
+	
+				<cfloop query="GetHistory">
+
+					<cfif IsDefined("passtype") and passtype is not "">
+
+						<cfquery datasource="#request.reg_dsn#" name="GetPassData" maxrows="1">
+							select passdescription
+							from passtype
+							where passtype = '#passtype#'
+						</cfquery>
+
+					</cfif>
+
+					<tr>
+						<TD nowrap><cfif invoicenumber is -1><A href="javascript:void(window.open('../classes/class_summary_receipt.cfm?invoicelist=#facid#-#invoicenumber#','','width=750,height=550,toolbars=no, scrollbars=yes, resizable'))">#facid#-#invoicenumber#</A><cfelse>#name#</cfif>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TD>
+						<TD>#dateformat(dt,"mm/dd/yyyy")# #timeformat(dt,"hh:mmtt")#&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TD>
+						<TD>#description#&nbsp;&nbsp;&nbsp;&nbsp;</TD>
+						<TD><cfif IsDefined("passtype") and passtype is not "">#GetPassData.passdescription#</cfif></TD>
+					</tr>
+				</cfloop>
+			</cfif>
+		</cfloop>
+  <cfinclude template="../histfooter.cfm">
+
+	</table>
+	
+	</form>
+
+</body>
+</cfoutput>
+</html>

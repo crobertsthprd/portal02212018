@@ -1,0 +1,520 @@
+<!--- UDFs --->
+<cffunction name="MonthsToYM">
+	<cfargument required="Yes" name="MonthsToConvert" default="0" type="numeric">
+	<cfargument required="No" name="Abbreviated" default="No" type="boolean">
+	<cfset var _VarYears = int(MonthsToConvert/12)>
+	<cfset var _VarMonths = MonthsToConvert - (_VarYears * 12)>
+	<cfset var _varStr = '' />
+
+	<cfif Abbreviated is "Yes">
+		<cfset _VarStr = ToString(_VarYears) & " yrs, " & ToString(_VarMonths) & " mths">
+	<cfelse>
+		<cfset _VarStr = ToString(_VarYears) & " years, " & ToString(_VarMonths) & " months">
+	</cfif>
+
+	<cfreturn _VarStr>
+</cffunction>
+
+<cffunction name="AssmtCredit" returntype="numeric">
+ <cfargument name="_type" required="Yes" type="string">
+ <cfargument name="_expires" required="Yes" type="date">
+ <cfset var _assmtrefund = (ceiling(25/366*100)/100) * datediff("d",now(),_expires)>
+ 
+ <cfif _type is "F">
+  <cfset _assmtrefund = _assmtrefund * 2>
+ </cfif>
+ 
+ <cfreturn _assmtrefund>
+</cffunction>
+
+
+
+
+<cffunction name="GetRate" returntype="numeric">
+ <!--- call by:
+ GetRate(Mode,IDRegRate, IDSenRate, ODRegRate, ODSenRate, PrimaryPatronID, PatronDOB, BusinessCenterFac, BusinessCenterID, IsID, Start, End)
+ Mode is either "R" or "P", denoting "registration or Passes
+ For passes an additional column is selected instead of calculating value
+  --->
+ <cfargument name="_Mode" required="Yes" type="string">
+ <cfargument name="_IDRegRate" required="Yes" type="numeric">
+ <cfargument name="_IDSenRate" required="Yes" type="numeric">
+ <cfargument name="_ODRegRate" required="Yes" type="numeric">
+ <cfargument name="_ODSenRate" required="Yes" type="numeric">
+ <cfargument name="_PrimaryPatronID" required="Yes" type="numeric">
+ <cfargument name="_PatronDOB" required="Yes" type="numeric">
+ <cfargument name="_BusinessCenterFac" required="Yes" type="string">
+ <cfargument name="_BusinessCenterID" required="Yes" type="string">
+ <cfargument name="_IsID" required="Yes" type="numeric">
+ <cfargument name="_Start" required="Yes" type="date">
+ <cfargument name="_End" required="Yes" type="date">
+ <cfargument name="_TermID" required="No" type="string">
+ <cfargument name="_RegP1" required="No">
+ <cfargument name="_SenP1" required="No">
+
+
+<cfset var _PatronMonths = '' />
+<cfset var _IsSen = '' />
+<cfset var _GetFacilitySCAge = '' />
+<cfset var _GetAssessmentPlan2Data = '' />
+<cfset var _GetSessionAssessmentData = '' />
+<cfset var _GetIDODScaler = '' />
+
+ 
+ <cfquery datasource="#request.reg_dsn#" name="_GetFacilitySCAge">
+  select   scmonths
+  from     facilities
+  where    facid = '#_BusinessCenterFac#'
+ </cfquery>
+ 
+ <cfset _PatronMonths = datediff("M",_PatronDOB,_Start)>
+ 
+ <cfif _PatronMonths gte _GetFacilitySCAge.scmonths>
+  <cfset _IsSen = 1>
+ <cfelse>
+  <cfset _IsSen = 0>
+ </cfif>
+ 
+ <cfif _IsID is 1 and _IsSen is 0>
+  <cfreturn _IDRegRate>
+ 
+ <cfelseif _IsID is 1 and _IsSen is 1>
+  <cfreturn _IDSenRate>
+ 
+ <cfelseif _IsID is 0>
+ 
+  <cfquery datasource="#request.reg_dsn#" name="_GetAssessmentPlan2Data">
+   select distinct ASSMTPLAN
+   from allassessments
+   where primarypatronid = #_PrimaryPatronID#
+   and valid = true
+   and #CreateODBCDate(_Start)# >= ASSMTEFFECTIVEWG
+   and #CreateODBCDate(_Start)# <= ASSMTEXPIRESWG
+   <cfif IsDefined("_End") and _End is not "" and 1 is 2>
+    and #CreateODBCDate(_End)# >= ASSMTEFFECTIVEWG
+    and #CreateODBCDate(_End)# <= ASSMTEXPIRESWG
+   </cfif>
+  </cfquery>
+ 
+  <cfquery datasource="#request.reg_dsn#" name="_GetSessionAssessmentData">
+   select *
+   from sessionassessments
+   where primarypatronid = #_PrimaryPatronID#
+   and #CreateODBCDate(_Start)# >= ASSMTEFFECTIVE - grace::integer
+   and #CreateODBCDate(_Start)# <= ASSMTEXPIRES + grace::integer
+   <cfif IsDefined("_End") and _End is not "" and 1 is 2>
+    and #CreateODBCDate(_End)# >= ASSMTEFFECTIVE - grace::integer
+    and #CreateODBCDate(_End)# <= ASSMTEXPIRES + grace::integer
+   </cfif>
+  </cfquery>
+ 
+  <cfif ListFind(2,ValueList(_GetAssessmentPlan2Data.AssmtPlan)) is not 0 or _GetSessionAssessmentData.recordcount is not 0>
+   <!--- Plan 2 assessment --->
+   <cfif _IsSen is 1>
+    <cfreturn _ODSenRate>
+   <cfelse>
+    <cfreturn _ODRegRate>
+   </cfif>
+ 
+  <cfelseif IsDefined("IsAssmtExepmt") and IsAssmtExepmt is 1>
+   <!--- assessmemt exempt rate --->
+   <cfif _IsSen is 1>
+    <cfreturn _ODSenRate>
+   <cfelse>
+    <cfreturn _ODRegRate>
+   </cfif>
+ 
+  <cfelseif ListFind(1,ValueList(_GetAssessmentPlan2Data.AssmtPlan)) is not 0>
+   <!--- Plan 1 assessment --->
+   <cfif _Mode is "R">
+    <!--- Registration Mode --->
+    <cfquery name="_GetIDODScaler" datasource="#request.reg_dsn#">
+     SELECT   IDTOPLAN1 
+     FROM     BUSINESSCENTERS 
+     WHERE    FACID = '#_BusinessCenterFac#'
+     AND      BUSINESSCENTERID = '#_BusinessCenterID#'
+    </cfquery>
+ 
+    <cfif _GetIDODScaler.recordcount is not 1>
+     <strong>Error in determining rate from GetIDODScaler. Contact IS.</strong>
+     <cfabort>
+    </cfif>
+ 
+    <!--- calculate Plan 1 rate --->
+    <cfif IsDefined("_TermID") and _TermID is "0509">
+     <!--- adjust to match brochure this term only --->
+     <cfif _IsSen is 1>
+      <cfreturn _SenP1>
+     <cfelse>
+      <cfreturn _RegP1>
+     </cfif>
+ 
+    <cfelse>
+ 
+     <cfif _IsSen is 1>
+      <cfreturn _IDSenRate * _GetIDODScaler.IDTOPLAN1>
+     <cfelse>
+      <cfreturn _IDRegRate * _GetIDODScaler.IDTOPLAN1>
+     </cfif>
+ 
+    </cfif>
+ 
+   </cfif>
+ 
+  <cfelse>
+   <!--- no assessment --->
+   <!--- <cfreturn _IDRegRate> --->
+ 
+   <cfif _IsSen is 1>
+    <cfreturn _ODSenRate>
+   <cfelse>
+    <cfreturn _ODRegRate>
+   </cfif>
+ 
+  </cfif>
+ 
+ </cfif>
+ 
+</cffunction>
+
+<!---
+<cffunction name="GetAccountBalance">
+ <cfargument name="_primary" required="Yes">
+ <cfargument name="_AsOfDate" required="No" default="#now()#">
+ 
+ <cfquery datasource="#request.reg_dsn#" name="_GetCurrentBalance">
+  SELECT   STARTINGBALANCE, NEWCREDIT, TENDEREDCASH, TENDEREDCHECK, 
+           TENDEREDCC, TENDEREDCHANGE, TOTALFEES 
+  FROM     INVOICE 
+  WHERE    PRIMARYPATRONID = #_primary# 
+  AND      ISVOIDED = false 
+  AND      MISCTENDTYPE is null 
+  AND      INVOICE.DT <= '#dateformat(_AsOfDate,"yyyy-mm-dd")# 23:59:59'
+  ORDER BY DT DESC
+  limit 1
+ </cfquery>
+ 
+ <cfif _GetCurrentBalance.recordcount is 1>
+  <cfreturn _GetCurrentBalance.startingbalance + _GetCurrentBalance.newcredit + _GetCurrentBalance.TenderedCash + _GetCurrentBalance.TenderedCheck + _GetCurrentBalance.TenderedCC - _GetCurrentBalance.TenderedChange - _GetCurrentBalance.TotalFees>
+ <cfelse>
+  <cfreturn 0>
+ </cfif>
+</cffunction>
+--->
+
+<!--- new function added 01.22.2008 --->
+
+<cffunction name="GetAccountBalance">
+ <cfargument name="_primary" required="Yes">
+ <cfargument name="_AsOfDate" required="No" default="#now()#">
+
+<cfset var _GetCurrentBalance = '' />
+ 
+ <cfquery datasource="#dopsds#" name="_GetCurrentBalance">
+  SELECT   invoicenet
+  FROM     INVOICENET
+  WHERE    PRIMARYPATRONID = #_primary# 
+  and      PRIMARYPATRONID > 0
+  AND      ISVOIDED = false 
+  AND      MISCTENDTYPE is null 
+  AND      DT <= '#dateformat(_AsOfDate,"yyyy-mm-dd")# 23:59:59'
+  ORDER BY dt desc, pk desc
+  limit 1
+ </cfquery>
+ 
+ <cfif _GetCurrentBalance.recordcount is 1>
+  <cfreturn DollarRound(_GetCurrentBalance.invoicenet)>
+ <cfelse>
+  <cfreturn 0>
+ </cfif>
+ 
+</cffunction>
+
+<cffunction name="DollarRound" output="Yes" returntype="numeric">
+<cfargument name="_value" required="No" type="numeric" default="0">
+<cfreturn round(_value * 100) / 100>
+</cffunction>
+
+
+<!--- added 09.11.2007 as requested by Don Hayes --->
+
+<cffunction name="DurationWeeks">
+ <!--- 
+  process previously generated query
+  dt order must be in ascending order
+  _ColumnToUse is the column to evaluate
+  --->
+ <cfargument name="_QueryToUse" type="string" required="Yes">
+ <cfargument name="_ColumnToUse" type="string" required="Yes">
+ <cfargument name="_ReturnAsString" type="numeric" required="No" default="0">
+ <cfset var _Duration = 0>
+ <cfset var _LastWeek = 0>
+ <cfset var _tmp = '' />
+
+ <cfloop query="#_QueryToUse#">
+  <cfset _tmp = week(evaluate(_ColumnToUse))>
+
+  <cfif _tmp is not _LastWeek>
+   <cfset _LastWeek = _tmp>
+   <cfset _Duration = _Duration + 1>
+  </cfif>
+
+ </cfloop>
+
+ <cfif _ReturnAsString is 1>
+  <cfset _Duration = _Duration & " Week(s)">
+ </cfif>
+
+ <cfreturn _Duration>
+</cffunction>
+
+
+
+<cffunction name="GetReturnQty" output="Yes" returntype="numeric">
+
+<cfset var _ReturnQty = '' />
+
+<cfquery datasource="dopsdsro" name="_ReturnQty" cachedwithin="#CreateTimeSpan(0, 0, 1, 0)#">
+	select   varvalue
+	from     dops.systemvars
+	where    varname = 'WebClassSearchReturnQty'
+</cfquery>
+
+<cfif _ReturnQty.recordcount is 0>
+	<cfreturn 5>
+<cfelse>
+	<cfreturn _ReturnQty.varvalue>
+</cfif>
+
+</cffunction>
+
+
+
+<cffunction name="GetReturnQtyRegMode" output="Yes" returntype="numeric">
+
+<cfset var _ReturnQtyRegMode = '' />
+
+<cfquery datasource="dopsdsro" name="_ReturnQtyRegMode" cachedwithin="#CreateTimeSpan(0, 0, 1, 0)#">
+	select   varvalue
+	from     dops.systemvars
+	where    varname = 'WebClassSearchReturnQtyRegMode'
+</cfquery>
+
+<cfif _ReturnQtyRegMode.recordcount is 0>
+	<cfreturn 5>
+<cfelse>
+	<cfreturn _ReturnQtyRegMode.varvalue>
+</cfif>
+
+</cffunction>
+
+
+
+<cffunction name="GetSessionid">
+<cfargument name="_PrimaryPatronID" required="Yes" type="numeric">
+
+<cfset var _CheckForCurrentSession = '' />
+
+<!--- check for already in session --->
+<cfquery datasource="#dopsds#" name="_CheckForCurrentSession">
+	SELECT   sessionID, node, facid
+	FROM     SessionPatrons
+	where    PatronID = #_PrimaryPatronID#
+</cfquery>
+
+<!--- check for thprd control --->
+<cfif _CheckForCurrentSession.RecordCount gt 0>
+
+	<cfif _CheckForCurrentSession.facid is not "WWW">
+		<cfreturn "">
+	</cfif>
+
+	<cfreturn _CheckForCurrentSession.SessionID>
+
+<cfelse>
+	<cfreturn "">
+</cfif>
+
+</cffunction>
+
+
+
+<cffunction name="GetDistrictStatus" returntype="array">
+	<!--- Usage: GetDistrictStatus(primarypatronid, householdmode, wrap, abbreviation, DistrictStat, InsufficientID, Verified) --->
+	<!--- specifiy _primarypatronid as 0 if calling with other params: otherwise, primary will be seeked, DistrictStat, InsufficientID, Verified will be ignored--->
+
+	<!--- returned array elements:
+	_GetDistrictStatusArray[1] = ID/OD as 1 or 0
+	_GetDistrictStatusArray[2] = Insufficient ID as 1 or 0>
+	_GetDistrictStatusArray[3] = ID/OD Rate Determination as 1 or 0
+	_GetDistrictStatusArray[4] = text as result
+	_GetDistrictStatusArray[5] = color as [color]
+	_GetDistrictStatusArray[6] = district status as weight 0=OD or unknown, 1=Ins, 2=Ver, 3=ID
+	--->
+
+	<cfargument name="_GetDistrictStatusPrimarypatronid" required="Yes" type="numeric">
+
+	<!--- householdmode: 0=not in housegold mode, 1=in household mode --->
+	<cfargument name="_GetDistrictHouseholdMode" required="No" type="numeric" default="0">
+
+	<!--- wrap: 0=no wrap, 1 = wrat at --->
+	<cfargument name="_GetDistrictStatusWrap" required="No" type="numeric" default="0">
+
+	<!---  _abbreviation: 0=none, 1=short, 2=minimal--->
+	<cfargument name="_GetDistrictStatusAbbreviation" required="No" type="numeric" default="0">
+
+	<cfargument name="_GetDistrictStatusDistStatus" required="No" type="numeric" default="0">
+	<cfargument name="_GetDistrictStatusInsufficientID" required="No" type="numeric" default="0">
+	<cfargument name="_GetDistrictStatusVerified" required="No" type="numeric" default="0">
+	
+	<cfset var _GetDistrictStatusArray = ArrayNew(1)>
+	<cfset var _GetPrimaryDistrictStatus = '' />
+	
+	<cfif _GetDistrictStatusPrimarypatronid gt 0>
+
+		<cfquery datasource="#dopsds#" name="_GetPrimaryDistrictStatus">
+	
+			<cfif _GetDistrictHouseholdMode is 1>
+				SELECT   indistrict, insufficientid, verified
+				FROM     sessionpatrons
+				WHERE    primarypatronid = #_GetDistrictStatusPrimarypatronid# 
+				AND      relationtype = 1 
+			<cfelse>
+				SELECT   patronrelations.indistrict, patrons.insufficientid, patrons.verified
+				FROM     patronrelations patronrelations
+				         INNER JOIN patrons patrons ON patronrelations.primarypatronid=patrons.patronid 
+				WHERE    patronrelations.primarypatronid = #_GetDistrictStatusPrimarypatronid# 
+				AND      patronrelations.relationtype = 1 
+			</cfif>
+	
+			limit 1
+		</cfquery>
+	
+		<cfif _GetPrimaryDistrictStatus.recordcount is 1>
+			<cfset _GetDistrictStatusDistStatus = _GetPrimaryDistrictStatus.indistrict>
+			<cfset _GetDistrictStatusInsufficientID = _GetPrimaryDistrictStatus.insufficientid>
+			<cfset _GetDistrictStatusVerified = _GetPrimaryDistrictStatus.verified>
+		</cfif>
+
+	</cfif>
+
+	<!--- Ddetermine status --->
+	<cfif _GetDistrictStatusDistStatus is 0>
+		<cfset _GetDistrictStatusArray[1] = 0>
+		<cfset _GetDistrictStatusArray[2] = 0>
+
+		<cfif _GetDistrictStatusAbbreviation is 0>
+			<cfset _GetDistrictStatusArray[4] = "Out of District">
+		<cfelseif _GetDistrictStatusAbbreviation is 1>
+			<cfset _GetDistrictStatusArray[4] = "Out of Dist">
+		<cfelse>
+			<cfset _GetDistrictStatusArray[4] = "OD">
+		</cfif>
+
+		<cfset _GetDistrictStatusArray[5] = "FF6666">
+		<cfset _GetDistrictStatusArray[6] = 0>
+
+	<cfelseif _GetDistrictStatusInsufficientID is 1>
+		<cfset _GetDistrictStatusArray[1] = 0>
+		<cfset _GetDistrictStatusArray[2] = 1>
+
+		<cfif _GetDistrictStatusAbbreviation is 0>
+			<cfset _GetDistrictStatusArray[4] = "In District (Insufficient Proof)">
+		<cfelseif _GetDistrictStatusAbbreviation is 1>
+			<cfset _GetDistrictStatusArray[4] = "In Dist (Ins Proof)">
+		<cfelse>
+			<cfset _GetDistrictStatusArray[4] = "Ins">
+		</cfif>
+
+		<cfset _GetDistrictStatusArray[5] = "FF9900">
+		<cfset _GetDistrictStatusArray[6] = 1>
+
+	<cfelseif _GetDistrictStatusVerified is 0>
+		<cfset _GetDistrictStatusArray[1] = 1>
+		<cfset _GetDistrictStatusArray[2] = 0>
+
+		<cfif _GetDistrictStatusAbbreviation is 0>
+			<cfset _GetDistrictStatusArray[4] = "In District (To Be Verified)">
+		<cfelseif _GetDistrictStatusAbbreviation is 1>
+			<cfset _GetDistrictStatusArray[4] = "In Dist (To Verify)">
+		<cfelse>
+			<cfset _GetDistrictStatusArray[4] = "Ver">
+		</cfif>
+
+		<cfset _GetDistrictStatusArray[5] = "00FFFF">
+		<cfset _GetDistrictStatusArray[6] = 2>
+	
+	<cfelseif _GetDistrictStatusVerified is 1>
+		<cfset _GetDistrictStatusArray[1] = 1>
+		<cfset _GetDistrictStatusArray[2] = 0>
+	
+		<cfif _GetDistrictStatusAbbreviation is 0>
+			<cfset _GetDistrictStatusArray[4] = "In District">
+		<cfelseif _GetDistrictStatusAbbreviation is 1>
+			<cfset _GetDistrictStatusArray[4] = "In Dist">
+		<cfelse>
+			<cfset _GetDistrictStatusArray[4] = "ID">
+		</cfif>
+
+		<cfset _GetDistrictStatusArray[5] = "Lime">
+		<cfset _GetDistrictStatusArray[6] = 3>
+
+	<cfelse>
+		<cfset _GetDistrictStatusArray[1] = 0>
+		<cfset _GetDistrictStatusArray[2] = 0>
+
+		<cfif _GetDistrictStatusAbbreviation is 0>
+			<cfset _GetDistrictStatusArray[4] = "Unknown">
+		<cfelseif _GetDistrictStatusAbbreviation is 1>
+			<cfset _GetDistrictStatusArray[4] = "Unk">
+		<cfelse>
+			<cfset _GetDistrictStatusArray[4] = "Unk">
+		</cfif>
+
+		<cfset _GetDistrictStatusArray[5] = "FF00FF">
+		<cfset _GetDistrictStatusArray[6] = 0>
+		
+	</cfif>
+
+	<!--- determine ID/OD Rate element value --->
+	<cfif _GetDistrictStatusArray[1] is 1 and _GetDistrictStatusArray[2] is 0>
+		<cfset _GetDistrictStatusArray[3] = 1>
+	<cfelse>
+		<cfset _GetDistrictStatusArray[3] = 0>
+	</cfif>
+
+	<cfif _GetDistrictStatusWrap is 1>
+		<cfset _GetDistrictStatusArray[4] = replace(_GetDistrictStatusArray[4]," (","<BR>(")>
+	</cfif>
+
+	<cfif servername is "DEV" and 1 is 1>
+		<cfset _GetDistrictStatusArray[4] = "DS-" & _GetDistrictStatusArray[4]>
+	</cfif>
+
+	<!--- returned array elements:
+	_GetDistrictStatusArray[1] = ID/OD as 1 or 0
+	_GetDistrictStatusArray[2] = Insufficient ID as 1 or 0>
+	_GetDistrictStatusArray[3] = ID/OD Rate Determination as 1 or 0
+	_GetDistrictStatusArray[4] = text as result
+	_GetDistrictStatusArray[5] = color as [color]
+	_GetDistrictStatusArray[6] = district status as weight 0=OD or unknown, 1=Ins, 2=Ver, 3=ID
+	--->
+
+	<cfif IsDefined("debugvars")>
+		<!--- display vars for debugging --->
+		<cfoutput>
+			GetDistrictStatus() vars:<BR>
+			_GetDistrictStatusPrimarypatronid = #_GetDistrictStatusPrimarypatronid#<BR>
+			_GetDistrictHouseholdMode = #_GetDistrictHouseholdMode#<BR>
+			_GetDistrictStatusWrap = #_GetDistrictStatusWrap#<BR>
+			_GetDistrictStatusAbbreviation = #_GetDistrictStatusAbbreviation#<BR>
+			_GetDistrictStatusDistStatus = #_GetDistrictStatusDistStatus#<BR>
+			_GetDistrictStatusInsufficientID = #_GetDistrictStatusInsufficientID#<BR>
+			_GetDistrictStatusVerified = #_GetDistrictStatusVerified#<BR>
+			<cfdump var="#_GetDistrictStatusArray#">
+		</cfoutput>
+
+	</cfif>
+
+	<cfreturn _GetDistrictStatusArray>
+</cffunction>

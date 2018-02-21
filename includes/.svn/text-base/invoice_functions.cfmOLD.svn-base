@@ -1,0 +1,168 @@
+<!--- <cffunction name="GetNextInvoice" returntype="numeric">
+	<cfargument name="_UseThisFac" type="string" default="WWW" required="No">
+
+	<cfquery datasource="#request.reg_dsn#" name="GNI1">
+		SELECT   InvoiceNumber as NI
+		FROM     invoice
+		WHERE    InvoiceFacID = '#_UseThisFac#'
+		ORDER BY InvoiceNumber desc
+		limit 1
+	</cfquery>
+
+	<cfset _NextInvoice = val(GNI1.NI) + 1>
+
+	<cfquery datasource="#request.reg_dsn#" name="_CheckForThisInvoice">
+		select pk
+		from invoice
+		where invoicefacid = '#_UseThisFac#'
+		and invoicenumber = #_NextInvoice#
+	</cfquery>
+
+	<cfif _CheckForThisInvoice.recordcount gt 0>
+		<cftransaction action="ROLLBACK">
+		<strong>Error in fetching next invoice. Go back and try again.</strong>
+		<cfabort>
+	</cfif>
+
+	<cfreturn _NextInvoice>
+</cffunction> --->
+
+<!--- <cffunction name="SystemLock" output="yes" returntype="numeric">
+	<cfargument name="_DSToLock" default="#request.reg_dsn#">
+	
+	<cftry>
+
+		<cfquery datasource="#_DSToLock#" name="_SystemLock">
+			select *
+			from systemlock
+			limit 1
+			for update
+		</cfquery>
+
+		<cfreturn 1>
+	<cfcatch>
+		<!--- <BR><BR>
+		<strong>Could not obtain database lock for required operation.<BR>
+		<BR>If problem persists, contact IS.<BR>
+		<input onClick="window.back()" type="button" value="Go Back And Try Again" class="GoButton">
+		<cfabort> --->
+		<cfreturn 0>
+	</cfcatch>
+	</cftry>
+
+</cffunction> --->
+
+<!--- <cffunction name="GetNextECnew" returntype="numeric">
+
+	<cfquery datasource="#request.reg_dsn#" name="_GetSysEC">
+		select coalesce(max(ec),0) + 1 as _NextEC
+		from sysec
+	</cfquery>
+
+	<!--- make initial row --->
+	<cfquery datasource="#request.reg_dsn#" name="_deletesysec">
+		delete from sysec
+	</cfquery>
+
+	<cfquery datasource="#request.reg_dsn#" name="_updatesysec">
+		insert into sysec
+			(ec)
+		values
+			(#_GetSysEC._NextEC#)
+	</cfquery>
+
+	<cfreturn _GetSysEC._NextEC>
+</cffunction> --->
+
+<!--- future version of GetNextEC() --->
+<!--- <cffunction name="GetNextEC" returntype="numeric">
+
+	<cfquery datasource="#request.reg_dsn#" name="_GetNextEC">
+		Select nextval('"dops"."sysec_pk_seq"') as tmp
+	</cfquery>
+
+	<cfreturn _GetNextEC.tmp>
+</cffunction> --->
+
+<!--- <cffunction name="Overlap" output="Yes" returntype="numeric" description="Checks for overlapping">
+	<!--- returns 0 if no overlap, 1 if overlaps --->
+	<!--- array format: --->
+	<!--- v1, v2 --->
+	<!--- v1, v2 --->
+	<!--- v1, v2 --->
+	<!--- ...... --->
+	<cfargument name="_OArray" type="array" required="Yes">
+	<cfset _AssmtOverlap = 0>
+
+	<cfif ArrayLen(_OArray) gt 1>
+		<!--- loop thru array to detect overlapping timeframes --->
+		<cfloop from="1" to="#ArrayLen(_OArray)#" step="1" index="_xa">
+
+			<cfloop from="1" to="#ArrayLen(_OArray)#" step="1" index="_ya">
+
+				<cfif _xa is not _ya>
+
+					<cfif isbetween(_OArray[_ya][1],_OArray[_xa][1],_OArray[_xa][2]) is 1>
+						<cfset _AssmtOverlap = 1>
+						<cfbreak>
+					</cfif>
+
+					<cfif isbetween(_OArray[_ya][2],_OArray[_xa][1],_OArray[_xa][2]) is 1>
+						<cfset _AssmtOverlap = 1>
+						<cfbreak>
+					</cfif>
+
+				</cfif>
+
+			</cfloop>
+
+			<cfif _AssmtOverlap is 1>
+				<cfbreak>
+			</cfif>
+	
+		</cfloop>
+
+	</cfif>
+
+	<cfreturn _AssmtOverlap>
+</cffunction> --->
+
+
+
+<!--- <cffunction name="isbetween">
+	<cfargument name="_TestVal" required="Yes">
+	<cfargument name="_BeginVal" required="Yes">
+	<cfargument name="_EndVal" required="Yes">
+	<cfargument name="_NotInclusive" required="No" type="numeric" default="0">
+
+	<cfif _BeginVal gt _EndVal>
+		<cfset _tmp = _EndVal>
+		<cfset _EndVal = _BeginVal>
+		<cfset _BeginVal = _tmp>
+	</cfif>
+
+	<cfif _NotInclusive is 1>
+		<cfif _TestVal gt _BeginVal and _TestVal lt _EndVal>
+			<cfreturn 1>
+		<cfelse>
+			<cfreturn 0>
+		</cfif>
+	<cfelse>
+		<cfif _TestVal gte _BeginVal and _TestVal lte _EndVal>
+			<cfreturn 1>
+		<cfelse>
+			<cfreturn 0>
+		</cfif>
+	</cfif>
+</cffunction> --->
+
+<!--- <cffunction name="tf" output="Yes" returntype="string">
+	<cfargument name="_boolval" required="Yes" type="numeric">
+	
+	<cfif _boolval is 1>
+		<cfreturn "true">
+	<cfelse>
+		<cfreturn "false">
+	</cfif>
+
+</cffunction> --->

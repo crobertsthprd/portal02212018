@@ -1,0 +1,482 @@
+<cfquery datasource="#application.dopsdsro#" name="GetNewRegistrations">
+	SELECT   reg.pk
+	FROM     reg
+	         INNER JOIN reghistory reghistory ON reg.primarypatronid=reghistory.primarypatronid AND reg.regid=reghistory.regid 
+	WHERE    reg.SessionID is not null
+	and      reg.primarypatronid = #cookie.uid#
+	limit    1
+</cfquery>
+<cfif GetNewRegistrations.recordcount gt 0>
+     <BR>
+     <BR>
+     <BR>
+     <strong>Pay Balance is not available while registering new classes. Go back to menu.</strong>
+     <cfabort>
+</cfif>
+<cfset localfac = "WWW">
+<cfset localnode = "W1">
+<cfset huserid = 0>
+<CFSET invoicetypestr = "-REGCONV-">
+
+<!--- deprecated <CFINCLUDE template="/portalINC/insession_function.cfm"> --->
+
+<!--- general flow:
+grab all reg with deposit and no balance paid 
+create array with list of invoices that have been selected for balance paid --->
+
+<!--- GetNextInvoice(), SystemLock(), GetNextEC() and GetNextECNew(), Overlap(), Isbetween() are inluded 
+<CFINCLUDE template="/portalINC/invoice_functions.cfm">--->
+
+<cfoutput>
+<!--- retrieves all outstanding deposits --->
+<!--- used for both display and data comparison within processing routine --->
+<cfquery name="ProcessReg" datasource="#application.reg_dsn#">
+	select   reg.*,
+	         classes.description,
+	         classes.startdt,
+	         classes.enddt,
+	         patrons.lastname,
+	         patrons.firstname,
+	         terms.termname,
+	         reg.regid
+	from     reg  
+	         inner join classes classes on reg.termid=classes.termid and reg.facid=classes.facid and reg.classid=classes.classid 
+	         inner join patrons patrons on reg.patronid=patrons.patronid 
+	         inner join terms terms on reg.termid=terms.termid and reg.facid=terms.facid 
+	where    reg.primarypatronid = #cookie.uid#
+	and      reg.regstatus = 'E'
+	and      reg.depositonly = true
+	and      reg.balancepaid is false
+	and      reg.valid = true
+</cfquery>
+
+<cfif IsInSession(primarypatronid) gt 0>
+ <!--- message of being in session --->
+	<CFSET errormessage="Account is currently in use at another location.<br>
+	Please log out and try again later.">
+	<CFINCLUDE template="finishpaybalanceDisplay.inc">
+	<cfabort>
+ <cfabort>
+</cfif>
+
+
+<cfif ProcessReg.recordcount is 0>
+	<CFSET errormessage="No classes found to process. Balance has already been paid or no classes were selected.<br>
+	<a href='javascript:history.go(-1);'>Click here</a> to try again.">
+	<CFINCLUDE template="finishpaybalanceDisplay.inc">
+	<cfabort>
+</cfif>
+
+<!--- 
+NOTES:
+Look for <cfabort> and display appropriate message
+ --->
+
+<!--- get account balance --->
+<cfset AvailableCredit = GetAccountBalance(cookie.uid)>
+<cfset TenderedCharge = form.nettopay>
+
+<CFPARAM name="ccd" default="">
+<CFPARAM name="ccExp" default="">
+<CFPARAM name="ccNum" default="">
+
+<!--- variables for payment are form.creditused and form.amountdue --->
+
+
+<!--- check for cc data --->
+<cfif val(form.amountdue - form.creditused) gt 0>
+          <cfif form.ccnum1 EQ 4801>
+               <CFSET errormessage="The credit card data supplied is not compatable with our payment system. We cannot process cards starting with '4801'. <br> <a href=""javascript:history.back(); "">Please go back and select a different payment method.</a>">
+               <CFINCLUDE template="finishpaybalanceDisplay.inc">
+               <cfabort>
+          </cfif>
+          <cfset ccNum = trim(form.ccnum1) & trim(form.ccnum2) & trim(form.ccnum3) & trim(form.ccnum4)>
+          <cfset ccExp = form.ccExpMonth & "/" & right(form.ccExpYear,2)>
+          <cfset ccType = form.ccType>
+          <!--- check card type and number for validity --->
+          <CF_mod10 ccType = "#ccType#" ccNum="#ccNum#" ccExp="#ccExp#">
+          <cfset ccv1 = REREPLACE(form.ccv,"[^0-9]","","ALL")>
+          <cfif len(ccv1) neq 3>
+               <cfset valid = 0>
+          </cfif>
+          <cfif valid is 0>
+               <CFSET errormessage="An invalid credit card number/CCV/expiration date was entered.<br> <a href=""javascript:history.back(); "">Please go back and try gain.</a>">
+               <CFINCLUDE template="finishpaybalanceDisplay.inc">
+               <cfabort>
+          </cfif>
+          <!---	<cf_cryp	[ type = "{ en* | de }" ] (en=encrypt, de=decrypt; default is "en")
+								string = "{ string to encrypt or decrypt }"
+								key = "{ key to use for encrypt or decrypt }"
+								[ return = "{ name a variable to return to the calling page as a structure, default is 'cryp' }" --->
+	<cfset ccNum = REPLACE(ccNum," ","","ALL")>
+	<cfset ccNum = REREPLACE(ccNum,"[^0-9]","","ALL")>
+	<cfset ccExp = REPLACE(ccExp," ","","ALL")>
+	<cfset ccExp = REREPLACE(ccExp,"[^0-9]","","ALL")>
+	
+	<cf_cryp type="en" string="#ccNum#" key="#skey#">
+	<cfset ccd = cryp.value>
+	<cfif ltrim(rtrim(ccv1)) is not "">
+		<cf_cryp type="en" string="#ccv1#" key="#skey#">
+		<cfset ccven = cryp.value>
+	</cfif>
+<cfelse>
+	<cfset ccNum = "">
+</cfif>
+
+
+
+<!--- 
+populate array c_array with registrations to be paid
+each element is regid
+built here from ProcessReg for testing purposes
+but needed in processing below
+ --->
+<cfset c_array = ListToArray(form.reglist)>
+<!--- end build array --->
+
+
+
+
+
+
+<!--- verify not in session(s) --->
+<!--- uses IsInSession() in db/Application.cfm
+<cfif IsInSession(primarypatronid) gt 0>
+	<!--- message of being in session --->
+	<cfabort>
+</cfif>
+ --->
+
+
+<cfset activity1 = "PB">
+<cfset GLLineNo = 0>
+	
+
+<!--- process convertions --->
+<!--- loop over ONLY being converted --->
+<!--- each one MUST be paid in full --->
+
+<cftransaction action="BEGIN" isolation="REPEATABLE_READ">
+
+	<!--- SQL LOCK 08.24.2009--->	
+  <cfquery name="LockInvoice" datasource="#application.dopsds#">
+   select   locktype
+   from     dops.systemlock
+   where    locktype = <cfqueryparam value="INVOICE" cfsqltype="CF_SQL_VARCHAR">
+   for      update
+  </cfquery>	
+
+<!---cfset systemlock()--->
+
+<cfif ArrayLen(c_array) gt 0>
+	<cfset NextInvoice = GetNextInvoice("WWW")>
+	<cfset totalfees = 0>
+
+	<cfloop query="ProcessReg">
+		<cfset go1 = 0>
+
+		<cfloop from="1" to="#ArrayLen(c_array)#" step="1" index="x">
+
+			<cfif c_array[x] is regid>
+				<cfset go1 = 1>
+				<cfbreak>
+			</cfif>
+
+		</cfloop>
+
+		<cfif go1 is 1>
+
+			<cfquery name="UpdateLastUse" datasource="#application.reg_dsn#">
+				update patrons
+				set
+					lastuse = current_date
+				where patronid = #patronid#
+			</cfquery>
+	
+			<!--- converting existing registration --->
+			<cfquery name="ClearSetFlags" datasource="#application.reg_dsn#">
+				update reg
+				set
+					IsBeingConverted = false,
+					WasConverted = true,
+					regstatus = 'E',
+					balancepaid = true,
+					depositonly = false,
+					feebalance = 0
+				where RegID = #RegID#
+				and PrimaryPatronID = #PrimaryPatronID#
+			</cfquery>
+	
+			<cfset m_miscbasis = min(feebalance,val(miscbasis))>
+			<cfset m_costbasis = feebalance - m_miscbasis>
+			<cfset costec = getNextEC()>
+	
+			<cfquery datasource="#application.reg_dsn#" name="InsertIntoHistory">
+				insert into reghistory
+					(action,invoicefacid,invoicenumber,ec,primarypatronid,
+					regid,finished,
+					amount,balance,
+					depositonly,
+					wasconverted,
+					pending,
+					depositbalpaid,
+					userid)
+				values
+					('E','WWW',#NextInvoice#,#costec#,#PrimaryPatronID#,
+					#RegID#,true,
+					#m_costbasis#,0,
+					false,
+					true,
+					false,
+					true,
+					0)
+			</cfquery>
+	
+			<cfquery datasource="#application.reg_dsn#" name="UpdateRegHistoryPending">
+				update reghistory
+				set
+					pending = false
+				where  primarypatronid = #primarypatronid#
+				and    regid = #regid#
+			</cfquery>
+	
+			<cfset totalfees = totalfees + FeeBalance>
+			<!---Fee Added: #FeeBalance#<br />--->
+			<cfset ActivityLine = 1>
+	
+			<cfquery datasource="#application.reg_dsn#" name="AddToActivity">
+				insert into Activity
+					(TermID,FacID,Activity,ActivityCode,PatronID,InvoiceFacID,InvoiceNumber,
+					Debit,
+					line,EC,primarypatronid,regid,
+					DepositOnly)
+				values
+					('#TermID#','#FacID#','#ClassID#','PB',#PatronID#,'WWW',#NextInvoice#,
+					#m_costbasis#,
+					#ActivityLine#,#costec#,#primarypatronid#,#regid#,
+					false)
+			</cfquery>
+	
+			<!--- misc fee if present --->
+			<cfif m_miscbasis gt 0><!---  or CountMiscFeeRows.cnt is not 0 --->
+				<cfset miscec = getNextEC()>
+
+				<!--- insert 0 for amount and balance for misc fee --->
+				<cfquery datasource="#application.reg_dsn#" name="InsertIntoHistory">
+					insert into reghistory
+						(action,invoicefacid,invoicenumber,ec,primarypatronid,
+						regid,finished,amount,balance,
+						Deferred,
+						deferredpaid,
+						depositonly,
+						IsMiscFee,
+						wasconverted,
+						pending,
+						depositbalpaid,
+						userid)
+					values
+						('E','WWW',#NextInvoice#,#miscec#,#PrimaryPatronID#,
+						#RegID#,true,#m_miscbasis#,0,
+						false,
+						<cfif activity1 is "PF">true<cfelse>false</cfif>,
+						false,
+						true,
+						true,
+						false,
+						<cfif activity1 is "PB">true<cfelse>false</cfif>,
+						0)
+				</cfquery>
+	
+				<cfset ActivityLine = ActivityLine + 1>
+	
+				<cfquery datasource="#application.reg_dsn#" name="AddToActivity">
+					insert into Activity
+						(TermID,FacID,Activity,
+						ActivityCode,PatronID,
+						InvoiceFacID,InvoiceNumber,
+						Debit,
+						line,EC,
+						primarypatronid,regid,IsMiscFee)
+					values
+						('#TermID#','#FacID#','#ClassID#',
+						'#activity1#M',#PatronID#,
+						'WWW',#NextInvoice#,
+						#m_miscbasis#,
+						#ActivityLine#, #miscec#,
+						#primarypatronid#,#regid#,true)
+				</cfquery>
+	
+			</cfif>
+	
+			<cfquery datasource="#application.reg_dsn#" name="GetClassData">
+				SELECT   CLASSES.glacctid, CLASSES.glmiscacctid 
+				FROM     reg REG
+				         INNER JOIN classes CLASSES ON REG.termid=CLASSES.termid AND REG.facid=CLASSES.facid AND REG.classid=CLASSES.classid
+				WHERE    reg.primarypatronid = #primarypatronid#
+				AND      reg.regid = #regid#
+			</cfquery>
+	
+			<cfif m_costbasis greater than 0>
+				<cfset GLLineNo = GLLineNo + 1>
+		
+				<cfquery datasource="#application.reg_dsn#" name="InsertClassGL2">
+					insert into GL
+						(Credit,AcctID,InvoiceFacID,InvoiceNumber,EntryLine,ec,activitytype,activity)
+					values
+						(#m_costbasis#,#GetClassData.GLAcctID#,'WWW',#NextInvoice#,#GLLineNo#,#costec#,'R','#TermID#-#FacID#-#ClassID#')
+				</cfquery>
+	
+			</cfif>
+	
+			<cfif m_miscbasis greater than 0>
+				<cfset GLLineNo = GLLineNo + 1>
+		
+				<cfquery datasource="#application.reg_dsn#" name="InsertClassMiscGL2">
+					insert into GL
+						(Credit,AcctID,InvoiceFacID,InvoiceNumber,EntryLine,ec,activitytype,activity)
+					values
+						(#m_miscbasis#,#GetClassData.GLMiscAcctID#,'WWW',#NextInvoice#,#GLLineNo#,#miscec#,'R','#TermID#-#FacID#-#ClassID#')
+				</cfquery>
+	
+			</cfif>
+
+		</cfif>
+
+	</cfloop>
+
+	<cfset CreditUsed = max(0,min(totalfees, AvailableCredit))>
+	
+	<!--- verify paid amount against due --->
+	<cfif TenderedCharge + CreditUsed is not totalfees>
+		<cftransaction action="ROLLBACK">
+		<!--- error message --->
+		Amount paid #numberformat(TenderedCharge + CreditUsed,"99,999.99")# is not equal to total fees of #numberformat(totalfees,"99,999.99")#
+		<cfabort>
+	</cfif>
+
+
+
+
+
+
+	<!--- ----------- --->
+	<!--- used credit --->
+	<!--- ----------- --->
+	<cfif CreditUsed greater than 0>
+		<cfset NextEC = GetNextEC()>
+		<cfset ActivityLine = ActivityLine + 1>
+
+		<cfquery datasource="#application.reg_dsn#" name="GetGLDistCredit">
+			select AcctID
+			from GLMaster
+			where InternalRef = 'DC'
+		</cfquery>
+
+		<cfif GetGLDistCredit.recordcount is 0>
+			Error in obtain account information.
+			<cfabort>
+		</cfif>
+		
+		<cfset GLDistCreditAccount = GetGLDistCredit.acctID>
+
+		<cfquery datasource="#application.reg_dsn#" name="AddToActivity">
+			insert into Activity
+				(ActivityCode,PrimaryPatronID,PatronID,InvoiceFacID,InvoiceNumber,Debit,Credit,line,EC)
+			values
+				('CU',#PrimaryPatronID#,#PrimaryPatronID#,'WWW',#NextInvoice#,#CreditUsed#,0,#ActivityLine#,#NextEC#)
+		</cfquery>
+
+		<cfset GLLineNo = GLLineNo + 1>
+
+		<cfquery datasource="#application.reg_dsn#" name="InsertGL1">
+			insert into GL
+				(Debit,AcctID,InvoiceFacID,InvoiceNumber,EntryLine,EC,activitytype,activity)
+			values
+				(#CreditUsed#,#GLDistCreditAccount#,'WWW',#NextInvoice#,#GLLineNo#,#NextEC#,'C','Credit')
+		</cfquery>
+
+	</cfif>
+
+
+
+
+
+
+	<cfquery datasource="#application.reg_dsn#" name="FindAddressID">
+		SELECT   patronrelations.addressid, patronrelations.indistrict, 
+		         patrons.insufficientid 
+		FROM     patronrelations patronrelations
+		         INNER JOIN patrons patrons ON patronrelations.primarypatronid=patrons.patronid
+		where    patronrelations.primarypatronid = #primarypatronid#
+		and      patronrelations.secondarypatronid = #primarypatronid#
+		limit    1
+	</cfquery>
+	
+	<cfquery datasource="#application.reg_dsn#" name="GetMailingAddress">
+		select mailingaddressid
+		from   patronrelations
+		where  primarypatronid = #primarypatronid#
+		and    secondarypatronid = #primarypatronid#
+	</cfquery>
+	
+	<cfset monies = totalfees - CreditUsed>
+
+	<cfquery datasource="#application.reg_dsn#" name="GetPrimaryPatronLookup">
+		select patronlookup
+		from patrons
+		where patronid = #PrimaryPatronID#
+	</cfquery>
+
+	<cfquery datasource="#application.reg_dsn#" name="InsertInvoice">
+		insert into invoice
+			(InvoiceFacID,InvoiceNumber,PrimaryPatronID,AddressID,
+			mailingaddressid,
+			InDistrict,TotalFees,UsedCredit,
+			startingbalance,TenderedCash,TenderedCheck,TenderedCC,TenderedChange,
+			CCA,CCED,CEW,ccType,CCV,
+			Node,userid,
+			primarypatronlookup,invoicetype)
+		values
+			('WWW',#NextInvoice#,#PrimaryPatronID#,#FindAddressID.AddressID#,
+			<cfif GetMailingAddress.mailingaddressid is "">#FindAddressID.AddressID#<cfelse>#GetMailingAddress.mailingaddressid#</cfif>,
+			<cfif FindAddressID.InDistrict is 1 and FindAddressID.insufficientid is 0>true<cfelse>false</cfif>,#TotalFees#,#CreditUsed#,
+			#AvailableCredit#,0,0,#monies#,0,
+			<cfif ccNum is not "">'#ccd#','#ccExp#','#right(ccNum,4)#','#left(ccNum,1)#',<cfif ccv is "">null<cfelse>'#ccven#'</cfif><cfelse>null,null,null,null,null</cfif>,
+			'W1',0,
+			'#GetPrimaryPatronLookup.patronlookup#',
+			'#invoicetypestr#')
+	</cfquery>
+
+
+
+	<cfif tenderedcharge gt 0>
+		<cfset ActivityLine = ActivityLine + 1>
+
+		<cfquery datasource="#application.reg_dsn#" name="AddToActivity">
+			insert into Activity
+				(ActivityCode,PatronID,InvoiceFacID,InvoiceNumber,Debit,Credit,line,EC,primarypatronid)
+			values
+				('PMT',#PrimaryPatronID#,'WWW',#NextInvoice#,0,#tenderedcharge#,#ActivityLine#,#GetNextEC()#,#primarypatronid#)
+		</cfquery>
+
+	</cfif>
+
+</cfif>
+
+<cfif 1 is 1>
+	<cftransaction action="COMMIT">
+</cfif>
+
+</cftransaction>
+
+<!--- go to receipt with receipt number --->
+<CFSET confirmmessage="Balance payment(s) successful. Thank you.<br><a href=""javascript:void(0);"" onClick=""window.open('../classes/class_summary_receipt.cfm?invoicelist=#localfac#-#NextInvoice#&p=y','receipt','toolbars=no, scrollbars=yes, resizable');"">View invoice #localfac#-#NextInvoice#</a>">
+
+<!---
+<CFSET confirmmessage = confirmmessage & "<br><br><strong>Rolled back for testing mode</strong>">
+--->
+
+<CFINCLUDE template="finishpaybalanceDisplay.inc">
+<!--- END: processing for assessment --->
+
+</cfoutput>

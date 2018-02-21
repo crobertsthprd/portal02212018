@@ -1,0 +1,72 @@
+<cffunction name="GetAddressID" output="Yes" returntype="numeric">
+ <!--- use syntax:
+ GetAddressID(addr1, addr2, city, state, zip [,propid])
+ propid, if gt 0, stores parcel id with address (optional)
+  --->
+ <cfargument name="_faddress1" default="" type="string">
+ <cfargument name="_faddress2" default="" type="string">
+ <cfargument name="_fcity" default="" type="string">
+ <cfargument name="_fstate" default="" type="string">
+ <cfargument name="_fzip" default="" type="string">
+ <cfargument name="_fpropid" default="0" type="numeric">
+
+ <cfset var _thisNewAddressID = '' />
+ <cfset var _findAddressID = '' />
+ <cfset var _getNewAddressID = '' />
+ <cfset var _MakeNewAddressRow = '' />
+
+ <cfset _faddress1 = lTrim(rTrim(_faddress1))>
+ <cfset _faddress2 = lTrim(rTrim(_faddress2))>
+ <cfset _fcity = lTrim(rTrim(_fcity))>
+ <cfset _fstate = lTrim(rTrim(_fstate))>
+ <cfset _fzip = replace(_fzip," ","","all")>
+ 
+ <cfquery datasource="#dopsds#" name="_FindAddressID">
+  select  AddressID
+  from    PatronAddresses
+  where   address1 <cfif _faddress1 is "">is null<cfelse>= '#_faddress1#'</cfif>
+  and     address2 <cfif _faddress2 is "">is null<cfelse>= '#_faddress2#'</cfif>
+  and     city <cfif _fcity is "">is null<cfelse>= '#_fcity#'</cfif>
+  and     state <cfif _fstate is "">is null<cfelse>= '#_fstate#'</cfif>
+  and     zip <cfif _fzip is "">is null<cfelse>= '#_fzip#'</cfif>
+  limit   1
+ </cfquery>
+ 
+ <cfif _FindAddressID.recordcount is 0>
+  <!--- create new address row --->
+  <cfquery datasource="#dopsds#" name="_GetNewAddressID">
+   Select   addressid
+   from     patronaddresses
+   order by addressid desc
+   limit 1
+  </cfquery>
+ 
+  <cfset _ThisNewAddressID = _GetNewAddressID.addressid + 1>
+ 
+  <cfquery datasource="#dopsds#" name="_MakeNewAddressRow">
+   insert into PatronAddresses
+    (addressid,
+    address1,
+    address2,
+    city,
+    state,
+    zip,
+    propid)
+   values
+    (#_ThisNewAddressID#,
+    <cfif _faddress1 is "">null<cfelse>'#_faddress1#'</cfif>,
+    <cfif _faddress2 is "">null<cfelse>'#_faddress2#'</cfif>,
+    <cfif _fcity is "">null<cfelse>'#_fcity#'</cfif>,
+    <cfif _fstate is "">null<cfelse>'#_fstate#'</cfif>,
+    <cfif _fzip is "">null<cfelse>'#_fzip#'</cfif>,
+    <cfif _fpropid gt 0>null<cfelse>#_fpropid#</cfif>)
+  </cfquery>
+ 
+  <cfreturn _ThisNewAddressID>
+ <cfelse>
+  <cfreturn _FindAddressID.AddressID>
+ </cfif>
+ 
+</cffunction>
+ 
+ 

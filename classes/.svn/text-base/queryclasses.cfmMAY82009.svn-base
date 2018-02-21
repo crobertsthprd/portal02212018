@@ -1,0 +1,827 @@
+<cfoutput>
+
+	<cfif IsDefined("gomain")>
+		<cfinclude template="index.cfm">
+		<cfabort>
+	</cfif>
+
+</cfoutput>
+
+
+<CFPARAM name="agesearch" default="all">
+<CFPARAM name="vieworder" default="classid">
+<CFPARAM name="SearchMode" default="All">
+<CFPARAM name="WeekdayInclusion" default="Any">
+
+<cfset CallingProgram = "queryclasses.cfm">
+<cfset tc = gettickcount()>
+
+<cfset TableWidth = 600>
+<cfset TableBorderWidth = 0>
+<cfset bgcolor = "ededed">
+
+<cfif IsDefined("dc") and dc is not "">
+	<cfinclude template="dropclass.cfm">
+</cfif>
+
+<cfparam name="SelectSearchTerm" default="0000">
+
+<!--- <cfif IsDefined("getclasses")>
+
+	<cfif not IsDefined("SelectSearchTerm")>
+		<BR><BR>
+		<strong>No term was selected. Go <A href="javascript:;" onClick="history.back()">back</A> and try again.</strong>
+		<cfabort>
+	</cfif>
+
+	<cfif not IsDefined("IncludeDOB")>
+		<BR><BR>
+		<strong>No patrons were selected. Go <A href="javascript:;" onClick="history.back()">back</A> and try again.</strong>
+		<cfabort>
+	</cfif>
+
+</cfif> --->
+
+<!---
+<cfif cookie.loggedin is not 'yes'>
+	<cflocation url="../index.cfm?msg=3">
+	<cfabort>
+</cfif>
+--->
+
+<cfif not isdefined('form.getclasses')>
+	<cflocation url="index.cfm">
+	<cfabort>
+</cfif>
+
+<!--- REMOVED: START update basket 
+<cfif isdefined('form.thecID') and form.thecID NEQ ""><!--- add/remove class to list --->
+	<cfif listfindnocase(session.classlist,"'#form.thecID#'") eq 0 and form.classaction EQ 'Add'>
+		<cfset session.classlist = listappend(session.classlist,"'#form.thecID#'")>
+	<cfelseif form.classaction EQ 'Remove'>
+		<cfset temp = listfindnocase(session.classlist,"'#form.thecID#'")>
+		<CFIF temp GT 0>
+			<cfset session.classlist = listdeleteat(session.classlist,temp)>
+		</CFIF>
+	</cfif>
+</cfif>
+<cfif isdefined('form.uniqueID') and form.uniqueID NEQ ""><!--- add/remove class to list --->
+	<cfif listfindnocase(session.uniqueIDclasslist,"'#form.uniqueID#'") eq 0 and form.classaction EQ 'Add'>
+		<cfset session.uniqueIDclasslist = listappend(session.uniqueIDclasslist,"'#form.uniqueID#'")>
+	<cfelseif form.classaction EQ 'Remove'>
+		
+		<cfset temp2 = listfindnocase(session.uniqueIDclasslist,"'#form.uniqueID#'")>
+		<CFIF temp2 GT 0>
+			<cfset session.uniqueIDclasslist = listdeleteat(session.uniqueIDclasslist,temp2)>
+		</CFIF>
+	</cfif>
+</cfif>
+--->
+<!--- END update basket --->
+<html>
+<head>
+<title>Tualatin Hills Park and Recreation District</title>
+<meta http-equiv="Content-Type" content="text/html;">
+<SCRIPT language="javascript">
+<!--
+function chooseclass(classID,thisClassAction,uniqueID) {
+	showclasses.thecID.value = classID;
+	showclasses.uniqueID.value = uniqueID;
+	// make sure we do not augment of decrement the classes we are currently viewing
+	//alert(showclasses.thecID.value);
+	showclasses.startclass.value = showclasses.currentstartclass.value;
+	showclasses.endclass.value = showclasses.currentendclass.value;
+	showclasses.getclasses.value = 'Retrieve Last Search';
+	showclasses.classaction.value = thisClassAction;
+	showclasses.submit();
+}
+
+//-->
+</SCRIPT>
+</head>
+<body bgcolor="ffffff" topmargin="0" leftmargin="0" marginheight="0" marginwidth="0">
+<cfoutput>
+
+
+<form name="f" action="#cgi.script_name#" method="post">
+<table border="#TableBorderWidth#" cellpadding="0" cellspacing="0" width="750">
+<tr>
+<td valign=top>
+	<table border=#TableBorderWidth# cellpadding=2 cellspacing=0 width=749>
+	<tr>
+		<td colspan=2 class="pghdr">
+		<!--- start header --->
+		<CFINCLUDE template="/portalINC/dsp_header.cfm">
+		<!--- end header --->
+		</td>
+	</tr>
+	<tr>
+		<td valign=top>
+			<table border=#TableBorderWidth# cellpadding=2 cellspacing=0>
+				<tr>
+					<td><img src="/portal/images/spacer.gif" width="130" height="1" border="0" alt=""></td>
+				</tr>
+				<tr>
+					<td valign=top nowrap class="lgnusr"><br><BR>
+					<!--- start nav --->
+					<cfinclude template="/portalINC/admin_nav_classes.cfm">
+					<!--- end nav --->
+					</td>
+				</tr>		
+			</table>		
+		</td>
+
+	<cfset returnqty = getreturnqtyregmode()>
+	<cfset primarypatronid = cookie.uID>
+	<input type="Hidden" valid="#primarypatronid#" name="primarypatronid">
+
+	<cfset clean_keywords = lTrim(rTrim(uCase(REReplaceNoCase(keywords, "[^A-Z 0-9 -]", " " ,"ALL"))))>
+	<cfset clean_classlist = lTrim(rTrim(uCase(REReplaceNoCase(classlist, "[^A-Z 0-9]", " " ,"ALL"))))>
+
+	<cfset ExcludeList = "0">
+
+	<cfif IsDefined("IncludeDOB")>
+
+		<cfloop index="x" list="#IncludeDOB#">
+			<cfset ExcludeList = ExcludeList & ", " & mid(x, 10, 999)>
+		</cfloop>
+
+	</cfif>
+
+	<!--- enroll patrons --->
+	<cfif IsDefined("enrollclasses") and IsDefined("enrollments")>
+		<!--- check element values --->
+		<cfset verified = 1>
+		<cfset enrollpaid = ListToArray(enrollments)>
+		<cfset enrollmentpairs = ArrayNew(2)>
+
+		<cfloop from="1" to="#ArrayLen(enrollpaid)#" step="1" index="x">
+			<cfset t2 = ListToArray(enrollpaid[x], "^")>
+
+			<cfif t2[1] + t2[2] is not t2[3]>
+				<cfset verified = 0>
+				<cfbreak>
+			</cfif>
+
+			<!--- array def: [class unique id][patronid] --->
+			<cfset enrollmentpairs[x][1] = t2[1]>
+			<cfset enrollmentpairs[x][2] = t2[2]>
+		</cfloop>
+
+		<cfif verified is 1>
+			<cfinclude template="processreg.cfm">
+		</cfif>
+
+	</cfif>
+
+	<cfinclude template="classescommon.cfm">
+
+	<cfif getclasses is "Search For Classes">
+
+		<cfquery name="GetPatrons" dbtype="query">
+			select  *
+			from    GetPatrons
+			where   secondarypatronid in (#ExcludeList#)
+		</cfquery>
+
+	</cfif>
+
+	<cfif getclasses is "Search For Classes" and Getpatrons.recordcount is 0>
+		<cfset return0rows = 1>
+	</cfif>
+
+	<cfquery datasource="dopsdsro" name="GetRegistrations">
+		SELECT   reg.patronid, classes.uniqueid 
+		FROM     reg 
+		         INNER JOIN classes classes ON reg.termid=classes.termid AND reg.facid=classes.facid AND reg.classid=classes.classid 
+		WHERE    reg.primarypatronid = #primarypatronid#
+		AND      reg.regstatus in ('E', 'A', 'R', 'W', 'H') 
+		AND      classes.status = 'A' 
+		AND      reg.valid = true
+		and      reg.patronid in (<cfif Getpatrons.recordcount is 0>0<cfelse>#ValueList(Getpatrons.secondarypatronid)#</cfif>)
+	</cfquery>
+
+	<cfif IsDefined("nextclasses")>
+		<cfset offset = offset + returnqty>
+	<cfelseif IsDefined("prevclasses")>
+		<cfset offset = max(offset - returnqty, 0)>
+	<cfelseif isDefined("enrollclasses") or (isDefined("dc") and dc is not "")>
+		<!--- do nothing to return to same page upon enrolling --->
+	<cfelse>
+		<cfset offset = 0>
+	</cfif>
+
+	<cfparam name="searchpageinstance" default="0">
+	<cfparam name="dobsearch" default="">
+
+   <td valign=top>
+  		<table border="#TableBorderWidth#" cellpadding="0" cellspacing="0" width="749">
+		<tr>
+		<td valign=top height=300></td>
+		<td valign=top class="bodytext">
+
+		<cfset CurrentSessionID = GetSessionID(primarypatronid)>
+
+		<cfif CurrentSessionID is "">
+			<BR><BR>
+			No session detected for logged in user. This can be due to THPRD staff taking control of this session. If this is not the case, try clicking <strong>Class Search</strong> again.
+			<cfabort>
+		</cfif>
+
+		<cfif IsDefined("enrollclasses") or IsDefined("dropclass") or 1 is 1>
+			<cfinclude template="shownewreg.cfm">
+		</cfif>
+
+		<cfquery dbtype="query" name="GetNewRegistrations">
+			select   *
+			from     GetNewRegistrations
+			where    patronid in (<cfif Getpatrons.recordcount is 0>0<cfelse>#ValueList(Getpatrons.secondarypatronid)#</cfif>)
+		</cfquery>
+	
+		<cfset selectsearchtermvar = selectsearchterm>
+		<!--- <cfset SelectSearchTermClassModeVar = SelectSearchTermClassMode> --->
+		<cfset SelectSearchTermClassModeVar = QuotedValueList(csGetAllAvailTerms.termid)>
+
+		<cfif IsDefined("keywords")>
+			<cfinclude template="queryclassescore.cfm">
+
+			<!--- show sql --->
+			<cfif 1 is 11>
+				#s.sql#
+			</cfif>
+
+			<cfif QueryClasses.recordcount gt 0>
+
+				<cfquery name="GetInstructorsForThisSet" datasource="#request.reg_dsn#ro">
+					SELECT   termid, facid, activity, Instructors.FirstName || ' ' || Instructors.LastName as InstructorName
+					FROM     InstructorSchedule 
+					         inner join Instructors ON InstructorSchedule.InstructorID=Instructors.InstructorID 
+					WHERE    
+
+					<cfloop query="QueryClasses">
+						(
+						         TermID   = '#TermID#'
+						AND      FacID    = '#FacID#'
+						AND      Activity = '#ClassID#')
+						<cfif currentrow is not recordcount>or</cfif>
+
+					</cfloop>
+
+					group by termid, facid, activity, Instructors.FirstName || ' ' || Instructors.LastName
+					order by Instructors.FirstName || ' ' || Instructors.LastName
+					limit #returnqty * 10#
+				</cfquery>
+
+			</cfif>
+
+			<cfif not isdefined('QueryClasses.recordcount')><!--- session.class_struct --->
+				<cflocation url="index.cfm">
+				<cfabort>
+			</cfif>
+
+			<cfparam name="keywordlist" default="">
+
+			<cfif IsDefined("IncludeDOB")>
+				<input type="hidden" name="IncludeDOB" value="#IncludeDOB#">
+			</cfif>
+
+			<cfif IsDefined("nowaitlists")>
+				<input type="hidden" name="nowaitlists" value="1">
+			</cfif>
+
+			<input type="hidden" name="searchpageinstance" value="#searchpageinstance#">
+			<input type="hidden" name="getclasses" value="#getclasses#">
+			<INPUT TYPE="hidden" NAME="keywords" value="#keywords#">
+			<INPUT TYPE="hidden" NAME="selectsearchterm" value="#selectsearchtermvar#">
+			<INPUT TYPE="hidden" NAME="selectsearchtermclassmode" value="#selectsearchtermclassmodevar#">
+			<input type="hidden" name="keywordlist" value="#keywordlist#">
+			<input type="hidden" value="#SelectInstructor#" name="SelectInstructor">
+			<input type="hidden" name="agesearch" value="#agesearch#">
+			<input type="hidden" name="dobsearch" value="#dobsearch#">
+			<input type="hidden" name="SearchMode" value="#SearchMode#">
+			<input type="hidden" name="classlist" value="#classlist#">
+
+			<cfif IsDefined("WeekdayInclusion")>
+				<input type="hidden" value="#WeekdayInclusion#" name="WeekdayInclusion">
+			</cfif>
+
+			<cfif isDefined("vieworder")>
+				<input type="hidden" name="vieworder" value="#vieworder#">
+			</cfif>
+
+			<cfif isDefined("notstarted")>
+				<input type="hidden" name="notstarted" value="1">
+			</cfif>
+
+			<cfif isDefined("includecompleted")>
+				<input type="hidden" name="includecompleted" value="1">
+			</cfif>
+
+			<cfif isDefined("notfilled")>
+				<input type="hidden" name="notfilled" value="1">
+			</cfif>
+
+			<cfif isDefined("tod")>
+				<input type="hidden" name="tod" value="#tod#">
+			</cfif>
+
+			<cfif IsDefined("CBSun")>
+				<input type="hidden" value="1" name="CBSun">
+			</cfif>
+			
+			<cfif IsDefined("CBMon")>
+				<input type="hidden" value="1" name="CBMon">
+			</cfif>
+			
+			<cfif IsDefined("CBTue")>
+				<input type="hidden" value="1" name="CBTue">
+			</cfif>
+			
+			<cfif IsDefined("CBWed")>
+				<input type="hidden" value="1" name="CBWed">
+			</cfif>
+			
+			<cfif IsDefined("CBThu")>
+				<input type="hidden" value="1" name="CBThu">
+			</cfif>
+			
+			<cfif IsDefined("CBFri")>
+				<input type="hidden" value="1" name="CBFri">
+			</cfif>
+			
+			<cfif IsDefined("CBSat")>
+				<input type="hidden" value="1" name="CBSat">
+			</cfif>
+
+			<cfif IsDefined("ignoreage")>
+				<input type="hidden" value="1" name="ignoreage">
+			</cfif>
+
+			<cfif IsDefined("includestarted")>
+				<input type="hidden" value="1" name="includestarted">
+			</cfif>
+
+			<cfif IsDefined("SelectFacility")>
+				<input type="hidden" name="SelectFacility" value="#SelectFacility#">
+			</cfif>
+
+			<!--- used for page ## plus back to original search params at bottom of page --->
+			<cfparam name="pagehist" default="0">
+			<cfset pagehist = pagehist + 1>
+
+			<TABLE border="#TableBorderWidth#" WIDTH="750" cellpadding=1 cellspacing=0>
+			<TR>
+
+			<cfset BadDOBs = "">
+
+			<cfif IsDefined("agesearch") and agesearch is "yes" and GETCLASSES is "Search For Classes">
+				<!--- check dobs --->
+		
+				<cfloop index="x" list="#dobsearch#">
+		
+					<cfif not IsDate(x)>
+						<cfset BadDOBs = BadDOBs & x & " ">
+					</cfif>
+		
+				</cfloop>
+		
+			</cfif>
+
+			<td valign=top class="bodytext" align=left>
+				<!--- START CLASS CONTENT --->
+				<span class="pghdr">Class Search Results</span><br>
+				<input type="hidden" name="pagehist" value="#pagehist#">
+				* Dates and Times subject to change.<br>
+
+				<cfif UseNewCodeMethod is 0>
+					Class enrollments are not guaranteed until the completion of the <strong>'Check-out</strong>' process and a receipt has been created. When you submit your registrations, the system will verify all of your selections to confirm that space is still available. If a class or program fills before you checkout, the system will place you on a waitlist and note that on your receipt. You will not be charged for any classes you are waitlisted on.<br><br>
+					<b><font color="red">Adding a class to the shopping basket does not reserve or 'hold' a class opening. Class availability is determined at completion of checkout. High-demand classes selected and added to the shopping cart may not be available - even if only a minimal  interval elapses - by the time payment information is submitted.</font></b><br>
+					<br>
+				</cfif>
+
+			</TD>
+
+			<td align="right" valign="middle" ><!--- &nbsp;&nbsp;<strong><cfif QueryClasses.recordcount gt 0><a href="javascript:window.print();" class="greentext">Print Results</a>&nbsp;&nbsp;|</cfif>&nbsp;&nbsp;<a href="index.cfm" class="greentext">New Search / Registration Home</a></strong> ---><!--- &nbsp;&nbsp;|&nbsp;&nbsp;<a onClick="window.open('/activities/regpush.cfm','regpush','width=920,height=675,scrollbars=yes,status=yes,toolbars=no,noresize');" href="javascript:void(0);" class="lgnmsg" style="text:decoration=none;"><strong>Register!</strong></a> --->
+			
+
+			<cfif Getpatrons.recordcount gt 0>
+
+				<cfif QueryClasses.recordcount gt 0>
+					<input type="button" value="Clear Selections" class="form_submit" onClick="javascript:form.reset()">&nbsp;&nbsp;&nbsp;
+					
+				</cfif>
+
+			<cfelseif getclasses is "Search For Classes" and Getpatrons.recordcount is 0>
+				<strong style="color: Red;">No patrons were selected</strong>
+
+			</cfif>
+
+			<cfif SelectSearchTerm is "0000">
+				&nbsp;&nbsp;&nbsp;&nbsp;<strong style="color: Red;">No term was selected</strong>&nbsp;&nbsp;&nbsp;&nbsp;
+			</cfif>
+			&nbsp;&nbsp;<A HREF="javascript:void(window.open('searchhelp.cfm','','width=500,height=500,statusbar=0,scrollbars=1,resizable=1'))">Enrollment Help</A>&nbsp;&nbsp;&nbsp;&nbsp;
+			</td>
+			<td bgcolor="##FFFFCC" align="center" class="patronpick"><CFIF Getpatrons.recordcount gt 0 AND QueryClasses.recordcount gt 0><strong>Select Patron(s) To Enroll</CFIF></td>
+			</TR>
+
+				<tr>
+					<td colspan="3" style="height: 5px;" ></td>
+				</tr>
+			<cfset counter = 1>
+			<cfset FoundValidClasses = 0>
+			<cfset FoundDepositClass = 0>
+			<cfset showreset = 0>
+			<cfset disableprocbutton = 1>
+
+			<cfif Getpatrons.recordcount gt 0>
+
+			<cfloop query="QueryClasses"><!---  startrow="#startclass#" endrow="#endclass#" ---><!--- session.class_struct.records --->
+
+			<cfif iddeposit + oddeposit gt 0>
+				<cfset FoundDepositClass = 1>
+			</cfif>
+
+			<cfset wdlist = "">
+			<cfif SunCount greater than 0><cfset wdlist = listappend(wdlist,'Su')></cfif>
+			<cfif MonCount greater than 0><cfset wdlist = listappend(wdlist,'M')></cfif>
+			<cfif TueCount greater than 0><cfset wdlist = listappend(wdlist,'Tu')></cfif>
+			<cfif WedCount greater than 0><cfset wdlist = listappend(wdlist,'W')></cfif>
+			<cfif ThuCount greater than 0><cfset wdlist = listappend(wdlist,'Th')></cfif>
+			<cfif FriCount greater than 0><cfset wdlist = listappend(wdlist,'F')></cfif>
+			<cfif SatCount greater than 0><cfset wdlist = listappend(wdlist,'Sa')></cfif>
+
+			<!--- use to check if keywords are in class title --->
+			<cfset newtitle = description>
+
+			<cfif keywords is not ''>
+				<cfset keywordlist = listchangedelims(keywords,' ',',')>
+				<cfset KeyStringArray = ListToArray(keywordlist," ")>
+				<cfset tempkw = "">
+
+				<cfloop from="1" to="#arraylen(KeyStringArray)#" index="keyword">
+
+					<cfif tempkw is not KeyStringArray[keyword] and len(KeyStringArray[keyword]) gt 1>
+						<cfset newtitle = replacenocase(newtitle,'#KeyStringArray[keyword]#','<span class="bodytext_red">#ucase(KeyStringArray[keyword])#</span>','all')>
+					</cfif>
+
+					<cfset tempkw = KeyStringArray[keyword]>
+				</cfloop>
+
+			</cfif>
+
+			<cfif startdt lt now() or statusdesc is "Canceled" or now() lt allowweb>
+				<cfset st = 0>
+			<cfelse>
+				<cfset st = 1>
+				<cfset showreset = 1>
+			</cfif>
+
+			<tr bgcolor="#bgcolor#">
+				<td class="lgnusr" nowrap valign=top><strong>#newtitle#</strong></TD>
+
+				<cfif now() gt enddt and statusdesc is not "Canceled">
+					<TD align="right"><span class="redtext">Class has completed</span></TD>
+				<cfelseif startdt lt now() and statusdesc is not "Canceled">
+					<TD align="right"><span class="redtext">Class has started</span></TD>
+				<cfelse>
+					<TD>&nbsp;</TD>
+				</cfif>
+
+				<CFIF bgcolor EQ "ffffff"><CFSET thisbg = "##ffffee"><CFELSE><CFSET thisbg = "##ffffcc"></CFIF>
+				<TD rowspan="4"  bgcolor="#bgcolor#" class="patronpick" align="center">
+
+				<select style="width: 160px;" multiple size="5" <cfif st is 0>disabled</cfif> name="enrollments" class="form_input">
+
+					<cfif statusdesc is "Canceled">
+						<option disabled value="0^0^0">Not Available
+						<option disabled value="0^0^0">Class Canceled
+
+					<cfelseif cookie.ds is 'Out Of District' and allowoddt gt now()>
+    				  <option disabled value="0^0^0">Not Available Until
+    				  <option disabled value="0^0^0">#DateFormat(allowoddt, "mm/dd")# #lCase(timeformat(allowoddt, "hh:mmtt"))#
+    				  <option disabled value="0^0^0">(Out Of District)	
+					
+
+
+					<cfelseif cookie.ds is 'Out Of District' and hasvalidassmt is 0>
+						<option disabled value="0^0^0">Not Available
+						<option disabled value="0^0^0">Assessment Required
+
+
+
+					<cfelseif allowweb gt now() and 1 is 1>
+						<option disabled value="0^0^0">Not Available Until
+						<option disabled value="0^0^0">#DateFormat(allowweb, "mm/dd")# #lCase(timeformat(allowweb, "hh:mmtt"))#
+
+					
+
+					<cfelseif now() gt enddt>
+						<option disabled value="0^0^0">Not Available
+						<option disabled value="0^0^0">Class Completed
+
+					<cfelseif startdt lt now()>
+						<option disabled value="0^0^0">Not Available
+						<option disabled value="0^0^0">Class Started
+
+					<cfelse><!--- if startdt gt now() and QueryClasses.statusdesc[QueryClasses.currentrow] is "A" --->
+						<cfset FoundValidClasses = 1>
+
+						<cfloop query="GetPatrons">
+							<cfset go = 1>
+							<cfset l = "">
+	
+							<cfif FindNoCase("summer", QueryClasses.TermName[QueryClasses.currentrow]) is 0 and relationtype is 4>
+								<!--- check for grandchild and summer classes ONLY --->
+								<cfif IsDefined("ignoreage")> 
+									<option disabled value="0^0^0">#Firstname# (Grandchild N/A)	
+								</CFIF>
+								<cfset go = 0>
+							<cfelseif dob gt QueryClasses.maxdob[QueryClasses.currentrow] or dob lt QueryClasses.mindob[QueryClasses.currentrow]>
+								<!--- check for age vs class age restriction --->
+								<cfset go = 0>
+
+								<cfif IsDefined("ignoreage")>
+									<option disabled value="0^0^0">#Firstname# (Age Violation)
+								</cfif>
+
+							<cfelse>
+								<!--- check for already enrolled --->
+								<cfset showasinrolled = 0>
+
+								<cfloop query="GetRegistrations">
+	
+									<cfif ListFind(ValueList(GetPatrons.secondarypatronid), patronid) gt 0>
+
+										<cfif patronid is GetPatrons.secondarypatronid[GetPatrons.currentrow] and uniqueid is QueryClasses.uniqueid[QueryClasses.currentrow]>
+											<cfset showasinrolled = 1>
+											<cfbreak>
+										</cfif>
+
+									</cfif>
+	
+								</cfloop>
+
+								<cfloop query="GetNewRegistrations">
+	
+									<cfif ListFind(ValueList(GetPatrons.secondarypatronid), patronid) gt 0>
+
+										<cfif patronid is GetPatrons.secondarypatronid[GetPatrons.currentrow] and termid is QueryClasses.termid[QueryClasses.currentrow] and facid is QueryClasses.facid[QueryClasses.currentrow] and classid is QueryClasses.classid[QueryClasses.currentrow]>
+											<cfset showasinrolled = 1>
+											<cfbreak>
+										</cfif>
+
+									</cfif>
+	
+								</cfloop>
+
+								<cfif showasinrolled is 1>
+									<option disabled value="0^0^0">#Firstname# (Enrolled)
+									<cfset go = 0>
+								</cfif>
+
+							</cfif>
+
+
+
+
+
+
+							<cfif go is 1 and Find(QueryClasses.leveltypecode[QueryClasses.currentrow], "ADT") gt 0>
+								<!--- A=Aquatics N=None T=Tennis D=Diving (future) --->
+								<cfset FoundLevel = 0>
+
+								<cfif (QueryClasses.leveltypecode[QueryClasses.currentrow] is "A" and Find(ltrim(rtrim("-" & instrlevela & "-")), QueryClasses.levels[QueryClasses.currentrow]) gt 0)>
+									<cfset FoundLevel = 1>
+									<cfset l = instrlevela>
+
+								<cfelseif (QueryClasses.leveltypecode[QueryClasses.currentrow] is "T" and Find(ltrim(rtrim("-" & instrlevela & "-")), QueryClasses.levels[QueryClasses.currentrow]) gt 0)>
+									<cfset FoundLevel = 1>
+									<cfset l = instrlevelt>
+
+								<!--- <cfelseif (QueryClasses.leveltypecode[QueryClasses.currentrow] is "D" and Find(ltrim(rtrim(instrlevelt)), QueryClasses.levels[QueryClasses.currentrow]) gt 0)>
+									<cfset FoundLevel = 1>
+									<cfset l = instrleveld> --->
+
+								</cfif>
+
+								<cfif FoundLevel is 0>
+
+									<cfif QueryClasses.leveltypecode[QueryClasses.currentrow] is "A" and ltrim(rtrim(instrlevela)) is "">
+										<cfset FoundLevel = 1>
+										<cfset l = instrlevela>
+
+									</cfif>
+
+									<cfif QueryClasses.leveltypecode[QueryClasses.currentrow] is "T" and ltrim(rtrim(instrlevelt)) is "">
+										<cfset FoundLevel = 1>
+										<cfset l = instrlevelt>
+									</cfif>
+
+									<!--- <cfif QueryClasses.leveltypecode[QueryClasses.currentrow] is "D" and ltrim(rtrim(instrleveld)) is "">
+										<cfset FoundLevel = 1>
+										<cfset l = instrleveld>
+
+									</cfif> --->
+
+									<cfif l is "">
+
+										<cfif QueryClasses.leveltypecode[QueryClasses.currentrow] is "A">
+											<cfset l = instrlevela>
+	
+										</cfif>
+	
+										<cfif QueryClasses.leveltypecode[QueryClasses.currentrow] is "T">
+											<cfset l = instrlevelt>
+										</cfif>
+	
+										<!--- <cfif QueryClasses.leveltypecode[QueryClasses.currentrow] is "D">
+											<cfset l = instrleveld>
+	
+										</cfif> --->
+
+									</cfif>
+
+								</cfif>
+
+								<cfif FoundLevel is 0>
+									<option disabled value="0^0^0">#Firstname#<cfif ltrim(rtrim(l)) is not ""> (N/A: Level #l#)</cfif>
+									<cfset go = 0>
+								</cfif>
+
+							</cfif>
+
+							<cfif go is 1>
+								<option value="#QueryClasses.UniqueID[QueryClasses.currentrow]#^#secondarypatronid#^#QueryClasses.UniqueID[QueryClasses.currentrow] + secondarypatronid#">#firstname#<cfif l is not ""> (Level #l#)</cfif>
+								<cfset disableprocbutton = 0>
+							</cfif>
+	
+						</cfloop>
+
+					</cfif>
+
+				</select>
+				</TD>
+			</tr>
+			<tr bgcolor="#bgcolor#">
+				<td class="bodytext" nowrap valign=top style="padding-right: 5px;"><strong class="lgnusr">#classID#</strong> #DateFormat(StartDT,"mmm d, yyyy")#<cfif DateFormat(StartDT,"mmm d, yyyy") is not DateFormat(EndDT,"mmm d, yyyy")> - #DateFormat(EndDT,"mmm d, yyyy")#</cfif>&nbsp;&nbsp;&nbsp;#lCase(TimeFormat(StartDT,"h:mmtt"))# to #lCase(TimeFormat(EndDT,"h:mmtt"))#<br>
+				<strong>Day(s):</strong>&nbsp;&nbsp;<cfif wdlist is ''>N/A<cfelse>#wdlist#</cfif>
+				<cfset _VarYears = int(MinAgeMonths/12)>
+				<cfset _VarMonths = MinAgeMonths - (_VarYears * 12)>
+	
+				&nbsp;&nbsp;&nbsp;<strong>Ages:</strong>&nbsp;&nbsp;#int(MinAgeMonths/12)# yrs, #evaluate(MinAgeMonths - (int(MinAgeMonths/12) * 12))# mths <cfif  MaxAgeMonths gte 99 * 12>and up<cfelse>to #int(MaxAgeMonths/12)# yrs, #evaluate(MaxAgeMonths - (int(MaxAgeMonths/12) * 12))# mths</cfif></td>
+				<td class="bodytext" nowrap valign=top><span class="lgnmsg">#name#</span><br>
+					<strong>Status:</strong>&nbsp;&nbsp;
+
+					<cfif statusdesc is not 'Canceled' and enddt lt now()>
+						Completed
+					<cfelseif statusdesc is not 'Active'>
+						<span style="color:ff0000; font-weight:bold">#statusdesc#</span>
+					<cfelse>
+						#statusdesc#
+					</cfif>
+
+					<cfif statusdesc is not 'Canceled'>
+						&nbsp;&nbsp;&nbsp;<strong>Enrolled:</strong>&nbsp;#Allocated - EWPClassAllocated# / #MaxQty#&nbsp;&nbsp;&nbsp;&nbsp;<strong>Waitlisted:</strong>&nbsp;
+						<cfif WaitList gt 0>
+							<span style="color:ff0000; font-weight:bold">#WaitList#</span>
+						<cfelse>
+							#WaitList#
+						</cfif>
+
+					</cfif>
+
+				</td>
+			</tr>
+			<tr bgcolor="#bgcolor#">
+				<td nowrap valign=top class="bodytext" colspan=2><strong>ID:</strong>&nbsp;<cfif MinAgeMonths lt scmonths>Regular $#DecimalFormat(InDistRegFee)#<cfif MaxAgeMonths gte scmonths>, </cfif></cfif><cfif MaxAgeMonths gte scmonths>Senior $#DecimalFormat(InDistSenFee)#</cfif><cfif decimalformat(iddeposit) gt 0>, <strong>Dep $#decimalformat(iddeposit)#</strong></cfif><!---&nbsp; &nbsp;&nbsp;<strong>OD:</strong>&nbsp;<cfif MinAgeMonths lt GetFacilityData.scmonths>Regular ($#DecimalFormat(OutDistRegFee)#)<cfif MaxAgeMonths gte GetFacilityData.scmonths>, </cfif></cfif><cfif MaxAgeMonths gte GetFacilityData.scmonths>Senior ($#DecimalFormat(OutDistSenFee)#)</cfif><cfif decimalformat(oddeposit) gt 0>, Dep ($#decimalformat(oddeposit)#)</cfif> ---><cfif DecimalFormat(MiscFee) gt 0>&nbsp;-&nbsp;<strong>Misc. Fee</strong> $#DecimalFormat(MiscFee)#</cfif></td>
+			</tr>
+			<tr bgcolor="#bgcolor#">
+
+			<cfset tmpinstr = "">
+			<cfset IsFirstInstructor = 1>
+
+			<cfif IsDefined("GetInstructorsForThisSet.recordcount")>
+
+				<cfloop query="GetInstructorsForThisSet">
+
+					<cfif termid is QueryClasses.termid[QueryClasses.currentrow] and facid is QueryClasses.facid[QueryClasses.currentrow] and activity is QueryClasses.classid[QueryClasses.currentrow]>
+
+						<cfif IsFirstInstructor is 0>
+							<cfset tmpinstr = tmpinstr & ", ">
+						</cfif>
+
+						<cfset tmpinstr = tmpinstr & InstructorName>
+						<cfset IsFirstInstructor = 0>
+					</cfif>
+
+				</cfloop>
+
+			</cfif>
+
+			<td nowrap valign=top>
+				<strong>Instructor(s):</strong>&nbsp;&nbsp;
+				<cfif tmpinstr is "">N/A<cfelse>#tmpinstr#</cfif>
+			</td>
+			<td nowrap valign=top><cfif ClassTextLength gt 0><A HREF="javascript:void(window.open('cdescription.cfm?cID=#uniqueID#&keywords=#keywords#','description','width=400,height=300,statusbar=0,scrollbars=1,resizable=0'))" class="greentext">View Description</a></cfif><cfif ClassCommentsLength gt 0 and ClassTextLength gt 0>&nbsp;&nbsp;|&nbsp;&nbsp;</cfif><cfif ClassCommentsLength gt 0><A HREF="javascript:void(window.open('ccomments.cfm?cID=#uniqueID#','comments','width=400,height=300,statusbar=0,scrollbars=1,resizable=0'))" class="greentext">View Comments</A></cfif>&nbsp;&nbsp;</td>
+			</tr>
+
+			<cfif counter lt QueryClasses.recordcount>
+				<tr>
+					<td colspan="3" style="height: 5px;" ></td>
+				</tr>
+			</cfif>
+
+			<cfset counter = counter + 1>
+
+			<cfif bgcolor is 'ededed'>
+				<cfset bgcolor = "ffffff">
+			<cfelse>
+				<cfset bgcolor = "ededed">
+			</cfif>
+
+			</cfloop>
+
+			</cfif>
+
+
+
+<!---
+			<cfif QueryClasses.recordcount is 0>
+				<TR>
+					<TD colspan="5">&nbsp;</TD>
+				</TR>
+			</cfif>
+--->
+
+				<tr>
+					<td colspan="3" style="height: 5px;" ></td>
+				</tr>
+
+			<tr>
+			<td valign="top" align="left">
+
+			<cfif QueryClasses.recordcount gt 0 and showreset is 1 and GetPatrons.recordcount gt 0>
+				<input type="button" value="Clear Selections" class="form_submit" onClick="javascript:form.reset()">
+			</cfif>
+
+			<input type="submit" value="Modify Search" class="form_submit" name="gomain"><!--- onClick="javascript:;history.go(-#pagehist#)" --->
+			<!--- <input type="submit" value="test" class="form_submit" name="gomain"> --->
+			</td>
+			<TD align="right"  valign="top">
+
+			<cfif QueryClasses.recordcount lt returnqty>
+				<strong>No further class matches</strong>&nbsp;&nbsp;&nbsp;&nbsp;
+			</cfif>
+
+			<cfif offset gt 0>
+				<input type="submit" name="prevclasses" value="<< Previous" class="form_submit" style="width: 75px;">
+			</cfif>
+
+			<input type="hidden" name="offset" value="#offset#">
+
+			<cfif QueryClasses.recordcount gte returnqty and QueryClasses.recordcount gt 0>
+				<input type="submit" name="nextclasses" value="More >>" class="form_submit" style="width: 75px;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+			</cfif>
+			</td>
+			<td  align="center" class="patronpick" bgcolor="##ffffcc">
+			<cfif QueryClasses.recordcount gt 0 and GetPatrons.recordcount gt 0>
+				<input type="submit" name="enrollclasses" value="Enroll Selected Patron(s)" style="background-color:##0000cc;font-weight:bold;font-size:10px;color:##ffffff;"<cfif FoundValidClasses is 0 or disableprocbutton is 1> disabled</cfif>>
+			
+			
+			<cfif FoundDepositClass is 1>
+			<table width="100%"><tr><td  align="center"><input type="checkbox" name="UseDepositMode">Enroll as <strong>Deposit Only</strong></td></tr></table><cfelse></cfif>
+
+			</cfif>
+			</td>
+			</tr>
+			</TABLE>
+			
+		 </td>
+		</tr>
+		</table>
+   </td>
+	</cfif>
+
+		<!--- END CLASS CONTENT --->
+					</td>
+				</tr>
+			</table>
+		</td>
+    </tr>
+	<tr>
+		<td colspan="3"><img src="#request.imagedir#/spacer.gif" width="1" height="11" border="0" alt=""></td>
+	</tr>
+	<cfinclude template="/portalINC/footer.cfm">
+</table>
+</form>
+
+</cfoutput>
+
+<CFINCLUDE template="/portalINC/googleanalytics.cfm">
+
+<cfif IsDefined("ShowTC")>
+	<BR><cfoutput><span style="font-size: x-small;">TC: #GetTickCount() - tc#</span></cfoutput>
+</cfif>
+
+</body>
+</html>

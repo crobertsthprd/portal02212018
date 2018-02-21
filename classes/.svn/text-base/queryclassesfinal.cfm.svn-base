@@ -1,0 +1,228 @@
+<CFABORT>
+<cfparam name="MaxClassQueryRecords" type="numeric" default="25">
+<!--- 
+<cfif IsDefined("RegMode") and IsDefined("IncludeDOBInQuery")>
+	get DOB from marked patrons - REG mode only
+	<cfquery datasource="#request.reg_dsn#" name="GetPatrons">
+		Select PatronID, DOB
+		from SessionPatrons
+		where SessionID = '#CurrentSessionID#'
+			and mark = true
+	</cfquery>
+
+</cfif>
+ --->
+
+<cfquery datasource="#request.reg_dsn#" name="QueryClasses">
+	SELECT   Classes.ClassID, Classes.Description, Classes.TermID, Classes.FacID, Classes.ClassComments, Classes.UniqueID,
+			Classes.Status, Classes.MinAgeMonths, Classes.MaxAgeMonths, Classes.MinDOB, Classes.MaxDOB, Classes.InDistRegFee, Classes.InDistSenFee, Classes.InstructorComments,
+			Classes.OutDistRegFee, Classes.OutDistSenFee, Classes.MiscFee, Classes.MinQty, Classes.MaxQty, Classes.defer, 
+			Classes.idDeposit, oddeposit, Classes.StartDT, Classes.EndDT, Classes.InstructorList, Classes.LevelTypeCode, classes.classtext,
+			Classes.SunCount, Classes.MonCount, Classes.TueCount, Classes.WedCount, Classes.ThuCount, Classes.FriCount, Classes.SatCount, 
+			Terms.TermName, Terms.TermStatus, Terms.AllowODDT, classes.status, <!--- ClassStatusCodes.StatusDesc,  --->classes.IsDivided,
+	      classes.available, classes.CancelReason, classes.cutoff, classes.levels, classes.businesscenterid
+	FROM  Classes Classes
+	      INNER JOIN Terms Terms ON Classes.FacID=Terms.FacID AND Classes.TermID=Terms.TermID
+	WHERE classes.suppressonweb = false
+ 	<!---and   now() >= date(Terms.StartDT) - 40--->
+	and   now() <= Classes.EndDt
+	<CFIF trim(session.uniqueIDclasslist NEQ "''") AND trim(session.uniqueIDclasslist NEQ "")>
+	and   classes.uniqueID in (#preservesinglequotes(session.uniqueIDclasslist)#)
+	<CFELSE>
+	and   classes.classID in ('none')
+	</CFIF>
+	<!--- 
+			<cfif not IsDefined("IgnoreClassExpiration")>and timestamp <= classes.EndDT</cfif>
+	<cfif keywords is not "">
+		<cfif IsDefined("SearchMode") and SearchMode is "Phrase">
+			and description like '%#Keywords#%'
+		<cfelse>
+			<cfset keywordlist = listchangedelims(keywords,' ',',')>
+			<cfset KeyStringArray = ListToArray(keywordlist," ")>
+			<cfset EndCount=ArrayLen(KeyStringArray)>
+			and (
+
+			<cfloop step="1" from="1" index="tmp" to="#EndCount#">
+				(upper(ClassID) like '%#uCase(KeyStringArray[tmp])#%' or
+				upper(description) like '%#uCase(KeyStringArray[tmp])#%' or
+				upper(classtext) like '%#uCase(KeyStringArray[tmp])#%')
+	
+				<cfif tmp is not #EndCount#>
+
+					<cfif IsDefined("SearchMode") and SearchMode is "any">
+						or
+					<cfelse>
+						and
+					</cfif>
+
+				</cfif>
+
+			</cfloop>
+			)
+		</cfif>
+
+	</cfif>
+<!--- time selection --->
+	<cfif IsDefined("tod")>
+		<cfif listlen(form.tod) lt 3> <!--- only add this to query if all boxes not checked --->
+			<cfset counter = 1>
+			and (
+			<cfloop list="#form.tod#" index="selectedtimes">
+				<cfset endtime = timeformat(dateadd('h',5,selectedtimes),'HH:mm')>
+				<cfset endtime = timeformat(dateadd('n',59,endtime),'HH:mm')>
+				time(classes.startdt) between '#selectedtimes#' and '#endtime#:00' <cfif counter is not listlen(form.tod)>or</cfif>
+				<cfset counter = counter + 1>
+			</cfloop>
+			)
+		</cfif>
+	</cfif>
+
+	<!--- facility selection --->
+	<cfif IsDefined("SelectFacility")>
+		<cfset FacArray=listToArray(SelectFacility)>
+		<cfset EndCount=ArrayLen(FacArray)>
+		and (
+
+		<cfloop step="1" from="1" index="tmp" to="#EndCount#">
+			rtrim(Classes.FacID) = '#rtrim(FacArray[tmp])#' <cfif tmp is not #EndCount#>or</cfif>
+		</cfloop>
+
+		)
+	</cfif>
+
+	<!--- instructor selection --->
+	<cfif IsDefined("SelectInstructor") and IsDefined("IncludeInstructor")>
+		and instructorlist like '%-#SelectInstructor#-%'
+	</cfif>
+
+	<!--- <cfif IsDefined("RegMode")>
+	
+		<cfif IsDefined("IncludeDOBInQuery")>
+
+			<cfif GetPatrons.RecordCount greater than 0>
+				and (
+				<cfset tmp = 0>
+
+				<cfloop query="GetPatrons">
+					<cfset tmp = tmp + 1>
+					(MinDOB <= '#DateFormat(GetPatrons.DOB,"yyyy-mm-dd")#' and
+					MaxDOB >= '#DateFormat(GetPatrons.DOB,"yyyy-mm-dd")#')
+					<cfif tmp is not #GetPatrons.RecordCount#>and</cfif>
+				</cfloop>
+
+				)
+			</cfif>
+
+		</cfif>
+		
+	<cfelse> --->
+		<cfswitch expression="#agesearch#">
+			<!--- age selection --->
+			<cfcase value="ym"><!--- selected age in years/months --->
+				<!--- build array of valid entries first --->
+				<cfset AgeArray = ArrayNew(1)>
+				<cfloop from="1" to="3" step="1" index="tmp">
+					<cfset varm = "SelectMonths" & tmp>
+					<cfset vary = "SelectYears" & tmp>
+					<cfset varmonths = evaluate(#vary#) * 12 + evaluate(#varm#)>
+					
+					<cfif varmonths is not 0>
+						<cfset q=ArrayAppend(AgeArray,varmonths)>
+					</cfif>			
+				</cfloop>
+			
+				<!--- <cfif not ArrayIsEmpty(AgeArray)> --->
+					<cfset EndCount=ArrayLen(AgeArray)>
+					and (
+		
+					<cfloop step="1" from="1" index="tmp" to="#EndCount#">
+						(MinAgeMonths <= #AgeArray[tmp]# and
+						MaxAgeMonths >= #AgeArray[tmp]#)
+						<cfif tmp is not #EndCount#>and</cfif>
+					</cfloop>
+		
+					)
+				<!--- </cfif> --->			
+			</cfcase>
+			<!--- dob selection
+			<cfcase value="dob"><!--- dob selected --->
+				<cfset DOBArray = ArrayNew(1)>
+			
+				<cfloop from="1" to="1" step="1" index="tmp">
+					<cfset var = "TextDOB" & tmp>
+					<cfset var = evaluate(#var#)>
+			
+					<cfif IsDate(#var#)>
+						<cfset q=ArrayAppend(DOBArray,#var#)>
+					</cfif>
+			
+				</cfloop>
+		
+				<cfif not ArrayIsEmpty(DOBArray)>
+					<cfset EndCount=ArrayLen(DOBArray)>
+					and (
+		
+					<cfloop step="1" from="1" index="tmp" to="#EndCount#">
+						(MinDOB <= '#DateFormat(DOBArray[tmp],"yyyy-mm-dd")#' and
+						MaxDOB >= '#DateFormat(DOBArray[tmp],"yyyy-mm-dd")#')
+						<cfif tmp is not #EndCount#>and</cfif>
+					</cfloop>
+		
+					)
+				</cfif>			
+			</cfcase> --->
+		</cfswitch>
+	<!--- </cfif> --->
+
+	<!--- day of week selection --->
+	<cfif IsDefined("CBSun") or IsDefined("CBMon") or IsDefined("CBTue") or IsDefined("CBWed") or IsDefined("CBThu") or IsDefined("CBFri") or IsDefined("CBSat")>
+		and (
+
+		<cfif IsDefined("WeekdayInclusion") and WeekdayInclusion is "All">
+			<cfset dj = "and">
+		<cfelse>
+			<cfset dj = "or">
+		</cfif>
+
+		<cfset UseOR = 0>
+
+		<cfif IsDefined("CBSun")>
+			<cfif UseOR is 1>#dj#</cfif> (SunCount > 0)
+			<cfset UseOR = 1>
+		</cfif>
+
+		<cfif IsDefined("CBMon")>
+			<cfif UseOR is 1>#dj#</cfif> (MonCount > 0)
+			<cfset UseOR = 1>
+		</cfif>
+
+		<cfif IsDefined("CBTue")>
+			<cfif UseOR is 1>#dj#</cfif> (TueCount > 0)
+			<cfset UseOR = 1>
+		</cfif>
+
+		<cfif IsDefined("CBWed")>
+			<cfif UseOR is 1>#dj#</cfif> (WedCount > 0)
+			<cfset UseOR = 1>
+		</cfif>
+
+		<cfif IsDefined("CBThu")>
+			<cfif UseOR is 1>#dj#</cfif> (ThuCount > 0)
+			<cfset UseOR = 1>
+		</cfif>
+
+		<cfif IsDefined("CBFri")>
+			<cfif UseOR is 1>#dj#</cfif> (FriCount > 0)
+			<cfset UseOR = 1>
+		</cfif>
+
+		<cfif IsDefined("CBSat")>
+			<cfif UseOR is 1>#dj#</cfif> (SatCount > 0)
+			<cfset UseOR = 1>
+		</cfif>
+		)
+	</cfif> --->
+
+	ORDER BY ClassID
+	limit #MaxClassQueryRecords#
+</cfquery>

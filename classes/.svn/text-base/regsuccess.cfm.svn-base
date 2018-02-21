@@ -1,0 +1,89 @@
+<cfoutput>
+<html>
+<head>
+<title>Registration Completed</title>
+</head>
+	<body >
+	<table border="0" cellpadding="0" cellspacing="0" width="750">
+	  <tr>
+	   <td><img src="#request.imagedir#/spacer.gif" width="92" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="18" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="21" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="43" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="21" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="18" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="2" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="30" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="32" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="2" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="15" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="33" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="2" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="28" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="20" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="2" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="21" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="40" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="1" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="1" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="20" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="20" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="2" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="15" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="44" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="2" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="36" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="2" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="14" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="6" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="52" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="9" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="5" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="2" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="65" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="14" height="1" border="0" alt=""></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="1" height="1" border="0" alt=""></td>
+	  </tr>
+	  <!--- <cfinclude template="#request.includes#/top_nav.cfm"> --->
+	  <tr>
+	   <td colspan="36" valign=top>
+			<table border=0 cellpadding=2 cellspacing=0 width=749>
+			<tr>
+			<td colspan=3><img src="#request.imagedir#/spacer.gif" width="1" height="20" border="0" alt=""></td>
+			</tr>
+			<tr>
+			<td>&nbsp;</td>
+			<td colspan=2 class="pghdr"><br>Registration Completed</td>
+			</tr>		
+			<tr>
+			<td valign=top>&nbsp;&nbsp;&nbsp;</td>
+			<td valign=top colspan=2 class="bodytext" align=center> 
+			<br><br><br><br>
+			You will receive and email receipt within 2 hours. To view receipt now, please click <a href="javascript:void(0);" onClick="window.open('class_summary_receipt.cfm?invoicelist=#replacenocase(localfac,"'","","all")#-#NextInvoice#','receipt','toolbars=no, scrollbars=yes, resizable');">here</a>.<br><br>
+			To return to the main menu, please click <a href="../main.cfm">here</a>.<br><br>
+			<strong>NOTE: All cancellations must be made in person or by phone.<br> 
+			Please call or visit the appropriate facility hosting the class or activity to process the cancellation.</strong>
+			<br><br><br><br><br><br><br><br><br><br>
+			
+			 </td>
+			</tr>
+			</table>
+			   
+	   </td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="1" height="128" border="0" alt=""></td>   
+	  </tr>
+	  <tr>
+	   <td colspan="36" valign="top"><p></p></td>
+	   <td><img src="#request.imagedir#/spacer.gif" width="1" height="11" border="0" alt=""></td>
+	  </tr>
+	  <cfinclude template="../footer.cfm">
+	
+		</table>
+		
+		<!--- end success screen--->
+	</cfoutput>
+	<CFINCLUDE template="/portalINC/googleanalytics.cfm">
+	</body>
+</html>
+
+
